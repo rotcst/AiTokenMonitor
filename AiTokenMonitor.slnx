@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="CodexWeeklyMonitor.Tests/CodexWeeklyMonitor.Tests.csproj" />
+  <Project Path="CodexWeeklyMonitor/CodexWeeklyMonitor.csproj" />
+</Solution>

@@ -1,0 +1,22 @@
+## Build output
+[Bb]in/
+[Oo]bj/
+publish/
+publish-*/
+*.user
+
+## Single-file publish artifacts (distributed via GitHub Releases, not git)
+*.exe
+*.dll
+*.pdb
+
+## IDE / OS
+.vs/
+.idea/
+*.suo
+Thumbs.db
+.DS_Store
+
+## Local app data / diagnostics
+diagnostics.log
+language.txt

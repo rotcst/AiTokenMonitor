@@ -1,0 +1,252 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        Dark menu palette matching the Claude tray menu. TrayIconService reads these same keys, so
+        the tray and the window's context menu stay in step.
+    -->
+    <SolidColorBrush x:Key="ModernMenuBackgroundBrush" Color="#FF2B2B29" />
+    <SolidColorBrush x:Key="ModernMenuBorderBrush" Color="#FF454542" />
+    <SolidColorBrush x:Key="ModernMenuTextBrush" Color="#FFEDEAE4" />
+    <SolidColorBrush x:Key="ModernMenuHoverBrush" Color="#FF3A3A37" />
+    <SolidColorBrush x:Key="ModernMenuSeparatorBrush" Color="#FF454542" />
+    <SolidColorBrush x:Key="ModernMenuMutedTextBrush" Color="#FF9A968F" />
+
+    <Style x:Key="ModernContextMenuStyle" TargetType="{x:Type ContextMenu}">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="MinWidth" Value="148" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="Background" Value="{StaticResource ModernMenuBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource ModernMenuBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{StaticResource ModernMenuTextBrush}" />
+        <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="StaysOpen" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ContextMenu}">
+                    <Border x:Name="ModernMenuChrome"
+                            Padding="{TemplateBinding Padding}"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="7"
+                            SnapsToDevicePixels="True">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="10"
+                                              Direction="270"
+                                              ShadowDepth="2"
+                                              Opacity="0.20"
+                                              Color="#55000000" />
+                        </Border.Effect>
+                        <ScrollViewer CanContentScroll="True"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </ScrollViewer>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ModernMenuItemStyle" TargetType="{x:Type MenuItem}">
+        <Setter Property="Height" Value="27" />
+        <Setter Property="Padding" Value="7,0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource ModernMenuTextBrush}" />
+        <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type MenuItem}">
+                    <Border x:Name="ModernMenuItemChrome"
+                            Padding="{TemplateBinding Padding}"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="4"
+                            SnapsToDevicePixels="True">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="CheckGlyph"
+                                       Text="✓"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       FontFamily="Segoe UI Symbol"
+                                       FontSize="10.5"
+                                       FontWeight="SemiBold"
+                                       Foreground="{TemplateBinding Foreground}"
+                                       Visibility="Collapsed" />
+                            <ContentPresenter Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              ContentSource="Header"
+                                              RecognizesAccessKey="True"
+                                              SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="ModernMenuItemChrome"
+                                    Property="Background"
+                                    Value="{StaticResource ModernMenuHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="ModernMenuItemChrome"
+                                    Property="Background"
+                                    Value="{StaticResource ModernMenuHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="CheckGlyph" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.42" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ModernMenuSeparatorStyle" TargetType="{x:Type Separator}">
+        <Setter Property="Margin" Value="7,3" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Separator}">
+                    <Border Height="1"
+                            Background="{StaticResource ModernMenuSeparatorBrush}"
+                            SnapsToDevicePixels="True" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="{x:Type ContextMenu}"
+           BasedOn="{StaticResource ModernContextMenuStyle}" />
+    <Style TargetType="{x:Type MenuItem}"
+           BasedOn="{StaticResource ModernMenuItemStyle}" />
+    <Style TargetType="{x:Type Separator}"
+           BasedOn="{StaticResource ModernMenuSeparatorStyle}" />
+
+    <!-- Shared modern scroll bar: history window and the main window's detail panel. -->
+    <Style x:Key="ScrollPageButtonStyle" TargetType="{x:Type RepeatButton}">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type RepeatButton}">
+                    <Border Background="Transparent" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ModernScrollThumbStyle" TargetType="{x:Type Thumb}">
+        <Setter Property="Background" Value="#5E7D8996" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Thumb}">
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="3" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="#A59AA6B2" />
+            </Trigger>
+            <Trigger Property="IsDragging" Value="True">
+                <Setter Property="Background" Value="#D5B8C2CC" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <ControlTemplate x:Key="ModernVerticalScrollBarTemplate"
+                     TargetType="{x:Type ScrollBar}">
+        <Grid Background="Transparent">
+            <Border x:Name="ModernRail"
+                    Margin="3,4"
+                    Background="#10FFFFFF"
+                    CornerRadius="3" />
+            <Track x:Name="PART_Track"
+                   Margin="3,4"
+                   IsDirectionReversed="True"
+                   Orientation="Vertical"
+                   Minimum="{TemplateBinding Minimum}"
+                   Maximum="{TemplateBinding Maximum}"
+                   Value="{TemplateBinding Value}"
+                   ViewportSize="{TemplateBinding ViewportSize}">
+                <Track.DecreaseRepeatButton>
+                    <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                                  CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                  Style="{StaticResource ScrollPageButtonStyle}" />
+                </Track.DecreaseRepeatButton>
+                <Track.Thumb>
+                    <Thumb MinHeight="32"
+                           Style="{StaticResource ModernScrollThumbStyle}" />
+                </Track.Thumb>
+                <Track.IncreaseRepeatButton>
+                    <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                                  CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                  Style="{StaticResource ScrollPageButtonStyle}" />
+                </Track.IncreaseRepeatButton>
+            </Track>
+        </Grid>
+    </ControlTemplate>
+
+    <ControlTemplate x:Key="ModernHorizontalScrollBarTemplate"
+                     TargetType="{x:Type ScrollBar}">
+        <Grid Background="Transparent">
+            <Border x:Name="ModernRail"
+                    Margin="4,3"
+                    Background="#10FFFFFF"
+                    CornerRadius="3" />
+            <Track x:Name="PART_Track"
+                   Margin="4,3"
+                   IsDirectionReversed="False"
+                   Orientation="Horizontal"
+                   Minimum="{TemplateBinding Minimum}"
+                   Maximum="{TemplateBinding Maximum}"
+                   Value="{TemplateBinding Value}"
+                   ViewportSize="{TemplateBinding ViewportSize}">
+                <Track.DecreaseRepeatButton>
+                    <RepeatButton Command="{x:Static ScrollBar.PageLeftCommand}"
+                                  CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                  Style="{StaticResource ScrollPageButtonStyle}" />
+                </Track.DecreaseRepeatButton>
+                <Track.Thumb>
+                    <Thumb MinWidth="32"
+                           Style="{StaticResource ModernScrollThumbStyle}" />
+                </Track.Thumb>
+                <Track.IncreaseRepeatButton>
+                    <RepeatButton Command="{x:Static ScrollBar.PageRightCommand}"
+                                  CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                  Style="{StaticResource ScrollPageButtonStyle}" />
+                </Track.IncreaseRepeatButton>
+            </Track>
+        </Grid>
+    </ControlTemplate>
+
+    <Style TargetType="{x:Type ScrollBar}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="#7D8996" />
+        <Setter Property="Width" Value="11" />
+        <Setter Property="Template" Value="{StaticResource ModernVerticalScrollBarTemplate}" />
+        <Style.Triggers>
+            <Trigger Property="Orientation" Value="Horizontal">
+                <Setter Property="Width" Value="Auto" />
+                <Setter Property="Height" Value="11" />
+                <Setter Property="Template" Value="{StaticResource ModernHorizontalScrollBarTemplate}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.35" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+</ResourceDictionary>
+
