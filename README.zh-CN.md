@@ -14,7 +14,8 @@
 ## 下载
 
 到 **[Releases 页面](https://github.com/rotcst/AiTokenMonitor/releases/latest)** 下载最新的单文件
-`AiTokenMonitor.exe`。免安装、无需另装运行时——自包含单文件，双击即用，运行后驻留在系统托盘。
+`AiTokenMonitor.exe`。免安装、无需另装运行时——自包含单文件，双击后直接显示主窗口并驻留在系统托盘；
+重复启动会唤醒已有窗口。
 
 ## 功能
 

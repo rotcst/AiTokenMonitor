@@ -1,37 +1,58 @@
-using System.Threading;
 using System.Windows;
+using CodexWeeklyMonitor.Services;
 
 namespace CodexWeeklyMonitor;
 
 public partial class App : System.Windows.Application
 {
-    private Mutex? _singleInstanceMutex;
-    private bool _ownsMutex;
+    private SingleInstanceCoordinator? _singleInstance;
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        _singleInstanceMutex = new Mutex(
-            initiallyOwned: true,
-            name: "Local\\CodexUsageMonitor.SingleInstance",
-            createdNew: out _ownsMutex);
-
-        if (!_ownsMutex)
+        _singleInstance = new SingleInstanceCoordinator();
+        if (!_singleInstance.IsPrimary)
         {
+            _singleInstance.SignalPrimary();
             Shutdown();
             return;
         }
 
         base.OnStartup(e);
+
+        var window = new MainWindow();
+        MainWindow = window;
+        window.Show();
+        window.Activate();
+
+        _singleInstance.ActivationRequested += SingleInstance_ActivationRequested;
+        _singleInstance.StartListening();
+    }
+
+    private void SingleInstance_ActivationRequested(object? sender, EventArgs e)
+    {
+        if (Dispatcher.HasShutdownStarted)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (MainWindow is MainWindow window)
+            {
+                window.RestoreFromExternalLaunch();
+            }
+        });
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        if (_ownsMutex)
+        if (_singleInstance is not null)
         {
-            _singleInstanceMutex?.ReleaseMutex();
+            _singleInstance.ActivationRequested -= SingleInstance_ActivationRequested;
+            _singleInstance.Dispose();
+            _singleInstance = null;
         }
 
-        _singleInstanceMutex?.Dispose();
         base.OnExit(e);
     }
 }

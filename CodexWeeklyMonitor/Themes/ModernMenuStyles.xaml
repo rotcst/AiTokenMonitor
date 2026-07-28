@@ -4,12 +4,12 @@
         Dark menu palette matching the Claude tray menu. TrayIconService reads these same keys, so
         the tray and the window's context menu stay in step.
     -->
-    <SolidColorBrush x:Key="ModernMenuBackgroundBrush" Color="#FF2B2B29" />
-    <SolidColorBrush x:Key="ModernMenuBorderBrush" Color="#FF454542" />
-    <SolidColorBrush x:Key="ModernMenuTextBrush" Color="#FFEDEAE4" />
-    <SolidColorBrush x:Key="ModernMenuHoverBrush" Color="#FF3A3A37" />
-    <SolidColorBrush x:Key="ModernMenuSeparatorBrush" Color="#FF454542" />
-    <SolidColorBrush x:Key="ModernMenuMutedTextBrush" Color="#FF9A968F" />
+    <SolidColorBrush x:Key="ModernMenuBackgroundBrush" Color="#FF20242A" />
+    <SolidColorBrush x:Key="ModernMenuBorderBrush" Color="#FF343A43" />
+    <SolidColorBrush x:Key="ModernMenuTextBrush" Color="#FFF0F2F5" />
+    <SolidColorBrush x:Key="ModernMenuHoverBrush" Color="#FF2F343C" />
+    <SolidColorBrush x:Key="ModernMenuSeparatorBrush" Color="#FF343A43" />
+    <SolidColorBrush x:Key="ModernMenuMutedTextBrush" Color="#FF9AA3AD" />
 
     <Style x:Key="ModernContextMenuStyle" TargetType="{x:Type ContextMenu}">
         <Setter Property="OverridesDefaultStyle" Value="True" />
@@ -63,32 +63,70 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type MenuItem}">
-                    <Border x:Name="ModernMenuItemChrome"
-                            Padding="{TemplateBinding Padding}"
-                            Background="{TemplateBinding Background}"
-                            CornerRadius="4"
-                            SnapsToDevicePixels="True">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="18" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="CheckGlyph"
-                                       Text="✓"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       FontFamily="Segoe UI Symbol"
-                                       FontSize="10.5"
-                                       FontWeight="SemiBold"
-                                       Foreground="{TemplateBinding Foreground}"
-                                       Visibility="Collapsed" />
-                            <ContentPresenter Grid.Column="1"
-                                              VerticalAlignment="Center"
-                                              ContentSource="Header"
-                                              RecognizesAccessKey="True"
-                                              SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
-                        </Grid>
-                    </Border>
+                    <Grid>
+                        <Border x:Name="ModernMenuItemChrome"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                SnapsToDevicePixels="True">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="18" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="14" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="CheckGlyph"
+                                           Text="✓"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Segoe UI Symbol"
+                                           FontSize="10.5"
+                                           FontWeight="SemiBold"
+                                           Foreground="{TemplateBinding Foreground}"
+                                           Visibility="Collapsed" />
+                                <ContentPresenter Grid.Column="1"
+                                                  VerticalAlignment="Center"
+                                                  ContentSource="Header"
+                                                  RecognizesAccessKey="True"
+                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                                <TextBlock x:Name="SubmenuArrow"
+                                           Grid.Column="2"
+                                           Text="›"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Segoe UI Symbol"
+                                           FontSize="13"
+                                           Foreground="{TemplateBinding Foreground}"
+                                           Visibility="Collapsed" />
+                            </Grid>
+                        </Border>
+                        <!--
+                            The old template rendered headers only. Without PART_Popup a MenuItem
+                            containing the language choices could highlight but never open or route
+                            a click to its children.
+                        -->
+                        <Popup x:Name="PART_Popup"
+                               AllowsTransparency="True"
+                               Focusable="False"
+                               IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                               Placement="Right"
+                               PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                               PopupAnimation="Fade">
+                            <Border MinWidth="132"
+                                    Padding="4"
+                                    Background="{StaticResource ModernMenuBackgroundBrush}"
+                                    BorderBrush="{StaticResource ModernMenuBorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="7"
+                                    SnapsToDevicePixels="True">
+                                <ScrollViewer CanContentScroll="True"
+                                              HorizontalScrollBarVisibility="Disabled"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
                             <Setter TargetName="ModernMenuItemChrome"
@@ -102,6 +140,9 @@
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="CheckGlyph" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="HasItems" Value="True">
+                            <Setter TargetName="SubmenuArrow" Property="Visibility" Value="Visible" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.42" />
@@ -249,4 +290,3 @@
         </Style.Triggers>
     </Style>
 </ResourceDictionary>
-

@@ -18,7 +18,7 @@ straight from each provider's own data, whether the CLI or desktop app is runnin
 Grab the latest single-file `AiTokenMonitor.exe` from the
 **[Releases page](https://github.com/rotcst/AiTokenMonitor/releases/latest)**. No install, no
 runtime to set up — it is a self-contained Windows executable. Double-click to run; it lives in the
-system tray.
+system tray after opening the main window. Launching it again restores the existing window.
 
 ## Features
 

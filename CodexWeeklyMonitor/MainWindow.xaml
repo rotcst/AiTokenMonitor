@@ -128,57 +128,26 @@
             <Setter Property="VerticalOffset" Value="8" />
             <Setter Property="Padding" Value="10,8" />
             <Setter Property="Foreground" Value="#E7EDF4" />
-            <Setter Property="Background" Value="#FF242A32" />
-            <Setter Property="BorderBrush" Value="#46515D" />
+            <!-- The ToolTip popup surface stays transparent; only the rounded chrome is opaque. -->
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="#3A424D" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="HasDropShadow" Value="True" />
+            <Setter Property="HasDropShadow" Value="False" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type ToolTip}">
                         <Border x:Name="TooltipChrome"
                                 Padding="{TemplateBinding Padding}"
-                                Background="{TemplateBinding Background}"
+                                Background="#F5222830"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="8">
-                            <Border.Effect>
-                                <DropShadowEffect BlurRadius="14"
-                                                  Direction="270"
-                                                  ShadowDepth="3"
-                                                  Opacity="0.42"
-                                                  Color="#000000" />
-                            </Border.Effect>
                             <ContentPresenter />
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
-
-        <!-- Same control and style as the card's menu, so both open identically. -->
-        <ContextMenu x:Key="TrayContextMenu"
-                     Style="{DynamicResource ModernContextMenuStyle}"
-                     Opened="TrayContextMenu_Opened">
-            <MenuItem Header="{loc:Str menu.showWindow}"
-                      Style="{DynamicResource ModernMenuItemStyle}"
-                      FontWeight="SemiBold"
-                      Click="TrayShowMenuItem_Click" />
-            <MenuItem Header="{loc:Str menu.refresh}"
-                      Style="{DynamicResource ModernMenuItemStyle}"
-                      Click="RefreshMenuItem_Click" />
-            <Separator Style="{DynamicResource ModernMenuSeparatorStyle}" />
-            <!-- Resources have no name scope, so these are located by Tag when the menu opens. -->
-            <MenuItem Tag="codex"
-                      Style="{DynamicResource ModernMenuItemStyle}"
-                      IsEnabled="False" />
-            <MenuItem Tag="claude"
-                      Style="{DynamicResource ModernMenuItemStyle}"
-                      IsEnabled="False" />
-            <Separator Style="{DynamicResource ModernMenuSeparatorStyle}" />
-            <MenuItem Header="{loc:Str menu.exit}"
-                      Style="{DynamicResource ModernMenuItemStyle}"
-                      Click="TrayExitMenuItem_Click" />
-        </ContextMenu>
 
         <Style x:Key="ProviderTabStyle" TargetType="{x:Type RadioButton}">
             <Setter Property="Height" Value="26" />

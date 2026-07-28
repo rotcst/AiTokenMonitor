@@ -17,7 +17,7 @@
 
 **[Releases 페이지](https://github.com/rotcst/AiTokenMonitor/releases/latest)** 에서 최신 단일 파일
 `AiTokenMonitor.exe` 를 받으세요. 설치 불필요, 별도 런타임 불필요 — 자체 포함 실행 파일입니다.
-더블클릭하면 실행되며 시스템 트레이에 상주합니다.
+더블클릭하면 메인 창을 표시한 뒤 시스템 트레이에 상주하며, 다시 실행하면 기존 창을 복원합니다.
 
 ## 기능
 

@@ -1141,6 +1141,116 @@ Run("TokenFormatter 按语言使用万/억或 K/M/B", () =>
     }
 });
 
+Run("重复启动会通知已运行实例显示主窗口", () =>
+{
+    var suffix = Guid.NewGuid().ToString("N");
+    using var primary = new SingleInstanceCoordinator(
+        $"Local\\AiTokenMonitor.Tests.Mutex.{suffix}",
+        $"Local\\AiTokenMonitor.Tests.Activate.{suffix}");
+    Equal(true, primary.IsPrimary);
+
+    using var activated = new ManualResetEventSlim();
+    primary.ActivationRequested += (_, _) => activated.Set();
+    primary.StartListening();
+
+    var secondaryWasPrimary = true;
+    Exception? secondaryFailure = null;
+    var secondaryThread = new Thread(() =>
+    {
+        try
+        {
+            using var secondary = new SingleInstanceCoordinator(
+                $"Local\\AiTokenMonitor.Tests.Mutex.{suffix}",
+                $"Local\\AiTokenMonitor.Tests.Activate.{suffix}");
+            secondaryWasPrimary = secondary.IsPrimary;
+            secondary.SignalPrimary();
+        }
+        catch (Exception exception)
+        {
+            secondaryFailure = exception;
+        }
+    });
+    secondaryThread.Start();
+    secondaryThread.Join();
+    if (secondaryFailure is not null)
+    {
+        throw secondaryFailure;
+    }
+
+    Equal(false, secondaryWasPrimary);
+    if (!activated.Wait(TimeSpan.FromSeconds(2)))
+    {
+        throw new Exception("第二次启动没有通知主实例恢复窗口。");
+    }
+});
+
+RunSta("原生托盘菜单在窗口失焦后自动关闭", () =>
+{
+    var opened = false;
+    var closed = false;
+    var timedOut = false;
+    using var trayIcon = new TrayIconService();
+    using var hostForm = new Forms.Form
+    {
+        FormBorderStyle = Forms.FormBorderStyle.FixedToolWindow,
+        ShowInTaskbar = false,
+        Size = new System.Drawing.Size(180, 100),
+        StartPosition = Forms.FormStartPosition.Manual,
+        Location = new System.Drawing.Point(-2_000, -2_000),
+    };
+    using var otherForm = new Forms.Form
+    {
+        FormBorderStyle = Forms.FormBorderStyle.FixedToolWindow,
+        ShowInTaskbar = false,
+        Size = new System.Drawing.Size(180, 100),
+        StartPosition = Forms.FormStartPosition.Manual,
+        Location = new System.Drawing.Point(-2_000, -2_000),
+    };
+    using var activateOtherWindow = new Forms.Timer { Interval = 100 };
+    using var watchdog = new Forms.Timer { Interval = 2_000 };
+
+    trayIcon.MenuForTesting.Closed += (_, _) =>
+    {
+        closed = true;
+        hostForm.BeginInvoke(new Action(hostForm.Close));
+    };
+    activateOtherWindow.Tick += (_, _) =>
+    {
+        activateOtherWindow.Stop();
+        otherForm.Activate();
+        otherForm.Focus();
+    };
+    watchdog.Tick += (_, _) =>
+    {
+        watchdog.Stop();
+        timedOut = true;
+        trayIcon.MenuForTesting.Close();
+        hostForm.Close();
+    };
+    hostForm.Shown += (_, _) =>
+    {
+        otherForm.Show();
+        hostForm.Activate();
+        trayIcon.MenuForTesting.Show(hostForm, new System.Drawing.Point(8, 8));
+        opened = trayIcon.MenuForTesting.Visible;
+        activateOtherWindow.Start();
+        watchdog.Start();
+    };
+
+    Forms.Application.Run(hostForm);
+    Equal(true, opened);
+    Equal(false, timedOut);
+    Equal(true, closed);
+    Equal(false, trayIcon.MenuForTesting.Visible);
+    Equal(
+        TrayIconService.MenuHoverColorForTesting.ToArgb(),
+        TrayIconService.ResolveMenuItemBackgroundForTesting(isSelected: true, isSubmenuOpen: false).ToArgb());
+    if (TrayIconService.MenuHoverColorForTesting.ToArgb() == System.Drawing.SystemColors.Highlight.ToArgb())
+    {
+        throw new Exception("托盘 hover 仍使用系统蓝色高亮。");
+    }
+});
+
 RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
 {
     var application = Application.Current ?? new Application
@@ -1205,32 +1315,65 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
         mainContextMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent, mainContextMenu));
         Equal("展开详情", (string)detailsMenuItem.Header);
 
-        // The tray uses the same WPF ContextMenu and style as the card, which is what makes the
-        // two popups open with an identical animation.
-        var trayMenu = mainWindow.TryFindResource("TrayContextMenu") as ContextMenu
-            ?? throw new Exception("未找到托盘菜单。");
-        if (!ReferenceEquals(trayMenu.Style, mainContextMenu.Style))
+        // Regression: the previous item template had no PART_Popup, so the language header was
+        // visible but none of its children could open or receive a click.
+        var languageMenu = mainContextMenu.Items.OfType<MenuItem>()
+            .SingleOrDefault(item => (item.Tag as string) == "language")
+            ?? throw new Exception("主窗口右键菜单缺少语言切换项。");
+        languageMenu.ApplyTemplate();
+        if (languageMenu.Template.FindName("PART_Popup", languageMenu) is not Popup)
         {
-            throw new Exception("托盘菜单和主窗口菜单没有使用同一个样式。");
+            throw new Exception("语言菜单模板没有提供子菜单弹出层。");
         }
 
-        trayMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent, trayMenu));
-        var trayStatusItems = trayMenu.Items.OfType<MenuItem>()
-            .Where(item => !item.IsEnabled)
-            .ToArray();
-        if (trayStatusItems.Length != 2)
-        {
-            throw new Exception($"托盘菜单应有 2 行状态信息，实际 {trayStatusItems.Length} 行。");
-        }
+        var englishLanguageItem = languageMenu.Items.OfType<MenuItem>()
+            .Single(item => item.Tag is AppLanguage.English);
+        englishLanguageItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, englishLanguageItem));
+        Equal(AppLanguage.English, Loc.Current);
+        Equal("AI Token Monitor", mainWindow.Title);
+        Loc.SetLanguage(AppLanguage.Chinese);
 
-        if ((trayStatusItems[1].Header as string)?.StartsWith("Claude", StringComparison.Ordinal) != true)
+        // The tray must stay a native ContextMenuStrip attached to NotifyIcon. This is the
+        // mechanism that makes a click in another application close it reliably.
+        using (var nativeTray = new TrayIconService())
         {
-            throw new Exception($"托盘状态行内容不对：{trayStatusItems[1].Header}");
-        }
+            var trayMenu = nativeTray.MenuForTesting;
+            if (!nativeTray.MenuAttachedForTesting || !trayMenu.AutoClose)
+            {
+                throw new Exception("托盘菜单没有启用原生外部点击自动关闭机制。");
+            }
 
-        if (!trayMenu.Items.OfType<MenuItem>().Any(item => (item.Header as string) == "退出程序"))
-        {
-            throw new Exception("托盘菜单缺少退出程序。");
+            if (trayMenu.MinimumSize.Width > 148)
+            {
+                throw new Exception($"托盘菜单最小宽度过大：{trayMenu.MinimumSize.Width}px。");
+            }
+
+            nativeTray.UpdateMenuStatus("Codex status", "Claude status");
+            var trayItems = trayMenu.Items.OfType<Forms.ToolStripMenuItem>().ToArray();
+            if (!trayItems.Any(item => item.Text == "Claude status"))
+            {
+                throw new Exception("托盘菜单没有显示 Claude 状态行。");
+            }
+
+            var refreshRequested = false;
+            nativeTray.RefreshRequested += (_, _) => refreshRequested = true;
+            trayItems.Single(item => item.Text == "立即刷新").PerformClick();
+            Equal(true, refreshRequested);
+
+            var nativeLanguageMenu = trayItems.Single(item => item.Text == "语言 / Language");
+            if (!ReferenceEquals(nativeLanguageMenu.DropDown.Renderer, trayMenu.Renderer))
+            {
+                throw new Exception("托盘语言子菜单没有使用统一的现代渲染器。");
+            }
+
+            var nativeEnglishItem = nativeLanguageMenu.DropDownItems
+                .OfType<Forms.ToolStripMenuItem>()
+                .Single(item => item.Tag is AppLanguage.English);
+            nativeEnglishItem.PerformClick();
+            Equal(AppLanguage.English, Loc.Current);
+            Equal("Show window", trayItems[0].Text);
+            Equal(true, nativeEnglishItem.Checked);
+            Loc.SetLanguage(AppLanguage.Chinese);
         }
 
         var menuBackground = mainWindow.TryFindResource("ModernMenuBackgroundBrush") as SolidColorBrush
@@ -1312,6 +1455,7 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
         Equal("76%", ((TextBlock)mainWindow.FindName("FiveHourRemainingText")).Text);
         Equal("59%", ((TextBlock)mainWindow.FindName("WeeklyRemainingText")).Text);
         Equal(true, trayIcon.ToolTipText.Contains("Claude周剩余:59%", StringComparison.Ordinal));
+        Equal(true, trayIcon.ClaudeMenuStatus.Contains("Claude", StringComparison.Ordinal));
         Equal("用量额度", ((TextBlock)mainWindow.FindName("BalanceCaption")).Text);
         Equal("$4.5 / $50", ((TextBlock)mainWindow.FindName("BalanceText")).Text);
         Equal("上下文占用", ((TextBlock)mainWindow.FindName("ResetCreditsCaption")).Text);
@@ -1436,9 +1580,16 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
         }
 
         barToolTip.ApplyTemplate();
-        if (barToolTip.Template.FindName("TooltipChrome", barToolTip) is not Border)
+        if (barToolTip.Template.FindName("TooltipChrome", barToolTip) is not Border tooltipChrome)
         {
             throw new Exception("柱状图悬浮提示没有加载现代圆角模板。");
+        }
+
+        if (barToolTip.HasDropShadow ||
+            barToolTip.Background is not SolidColorBrush { Color.A: 0 } ||
+            tooltipChrome.Effect is not null)
+        {
+            throw new Exception("柱状图悬浮提示仍存在圆角外的矩形黑底或阴影层。");
         }
 
         barToolTip.PlacementTarget = toolTipOwners[0];
@@ -1493,10 +1644,11 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             throw new Exception("隐藏到托盘后不应保留任务栏按钮。");
         }
 
-        trayIcon.RequestShow();
+        // Double-clicking the EXE while this instance is hidden signals this same restore path.
+        mainWindow.RestoreFromExternalLaunch();
         if (!mainWindow.IsVisible || !mainWindow.ShowInTaskbar)
         {
-            throw new Exception("从托盘恢复后没有找回窗口和任务栏按钮。");
+            throw new Exception("重复启动没有恢复主窗口和任务栏按钮。");
         }
 
         // Quitting is a tray-only action now.
@@ -1685,7 +1837,7 @@ sealed class FakeTrayIconService : ITrayIconService
 {
     public event EventHandler? ShowRequested;
 
-    public event EventHandler<TrayMenuRequest>? MenuRequested;
+    public event EventHandler? RefreshRequested;
 
     public event EventHandler? ExitRequested;
 
@@ -1693,14 +1845,24 @@ sealed class FakeTrayIconService : ITrayIconService
 
     public string ToolTipText { get; set; } = string.Empty;
 
+    public string CodexMenuStatus { get; private set; } = string.Empty;
+
+    public string ClaudeMenuStatus { get; private set; } = string.Empty;
+
 
     public bool Disposed { get; private set; }
 
     public void RequestShow() => ShowRequested?.Invoke(this, EventArgs.Empty);
 
-    public void RequestMenu(int x, int y) => MenuRequested?.Invoke(this, new TrayMenuRequest(x, y));
+    public void RequestRefresh() => RefreshRequested?.Invoke(this, EventArgs.Empty);
 
     public void RequestExit() => ExitRequested?.Invoke(this, EventArgs.Empty);
+
+    public void UpdateMenuStatus(string codexStatus, string claudeStatus)
+    {
+        CodexMenuStatus = codexStatus;
+        ClaudeMenuStatus = claudeStatus;
+    }
 
     public void Dispose()
     {

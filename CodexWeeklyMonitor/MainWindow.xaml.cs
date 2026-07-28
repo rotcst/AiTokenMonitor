@@ -76,7 +76,7 @@ public partial class MainWindow : Window
         _localTokenMonitor.UsageUpdated += LocalTokenMonitor_UsageUpdated;
         _claudeMonitor.UsageUpdated += ClaudeMonitor_UsageUpdated;
         _trayIcon.ShowRequested += TrayIcon_ShowRequested;
-        _trayIcon.MenuRequested += TrayIcon_MenuRequested;
+        _trayIcon.RefreshRequested += TrayIcon_RefreshRequested;
         _trayIcon.ExitRequested += TrayIcon_ExitRequested;
         Loc.Changed += Loc_Changed;
         Loaded += MainWindow_Loaded;
@@ -668,6 +668,15 @@ public partial class MainWindow : Window
         var codexWeekly = FormatWeeklyTooltip(_currentSnapshot?.RateLimits.Weekly);
         var claudeWeekly = FormatWeeklyTooltip(_claudeSnapshot?.Weekly);
         _trayIcon.ToolTipText = $"Codex周剩余:{codexWeekly} | Claude周剩余:{claudeWeekly}";
+        _trayIcon.UpdateMenuStatus(
+            FormatTrayStatusLine(
+                "Codex",
+                _currentSnapshot?.Detail?.PlanType,
+                _currentSnapshot?.RateLimits.Weekly),
+            FormatTrayStatusLine(
+                "Claude",
+                _claudeSnapshot?.Account?.SubscriptionType,
+                _claudeSnapshot?.Weekly));
     }
 
     /// <summary>Mirrors the Claude tray menu's "plan / usage" block for one provider.</summary>
@@ -1168,71 +1177,9 @@ public partial class MainWindow : Window
         RunOnDispatcher(RestoreFromTray);
     }
 
-    private void TrayIcon_MenuRequested(object? sender, TrayMenuRequest request)
-    {
-        RunOnDispatcher(() => ShowTrayMenu(request));
-    }
-
-    /// <summary>
-    /// Opens the shared WPF menu at the cursor. Windows has no foreground window of ours while the
-    /// card is hidden, so the popup takes an explicit mouse capture to stay dismissable.
-    /// </summary>
-    private void ShowTrayMenu(TrayMenuRequest request)
-    {
-        if (_isClosing || TryFindResource("TrayContextMenu") is not ContextMenu menu)
-        {
-            return;
-        }
-
-        var scale = VisualTreeHelper.GetDpi(this);
-        menu.PlacementTarget = this;
-        menu.Placement = PlacementMode.AbsolutePoint;
-        menu.HorizontalOffset = request.X / scale.DpiScaleX;
-        menu.VerticalOffset = request.Y / scale.DpiScaleY;
-        menu.StaysOpen = false;
-        menu.IsOpen = true;
-        menu.Focus();
-    }
-
-    private void TrayContextMenu_Opened(object sender, RoutedEventArgs e)
-    {
-        if (sender is not ContextMenu menu)
-        {
-            return;
-        }
-
-        // Only the two status rows are set imperatively; the rest keep their {loc:Str} bindings so
-        // assigning Header here (which would replace the binding) must be avoided for them.
-        foreach (var item in menu.Items.OfType<MenuItem>())
-        {
-            switch (item.Tag)
-            {
-                case "codex":
-                    item.Header = FormatTrayStatusLine(
-                        "Codex",
-                        _currentSnapshot?.Detail?.PlanType,
-                        _currentSnapshot?.RateLimits.Weekly);
-                    break;
-                case "claude":
-                    item.Header = FormatTrayStatusLine(
-                        "Claude",
-                        _claudeSnapshot?.Account?.SubscriptionType,
-                        _claudeSnapshot?.Weekly);
-                    break;
-            }
-        }
-
-        EnsureLanguageMenu(menu);
-    }
-
-    private void TrayShowMenuItem_Click(object sender, RoutedEventArgs e)
+    internal void RestoreFromExternalLaunch()
     {
         RestoreFromTray();
-    }
-
-    private void TrayExitMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        Close();
     }
 
     private void TrayIcon_RefreshRequested(object? sender, EventArgs e)
@@ -1276,7 +1223,7 @@ public partial class MainWindow : Window
         _localTokenMonitor.UsageUpdated -= LocalTokenMonitor_UsageUpdated;
         _claudeMonitor.UsageUpdated -= ClaudeMonitor_UsageUpdated;
         _trayIcon.ShowRequested -= TrayIcon_ShowRequested;
-        _trayIcon.MenuRequested -= TrayIcon_MenuRequested;
+        _trayIcon.RefreshRequested -= TrayIcon_RefreshRequested;
         _trayIcon.ExitRequested -= TrayIcon_ExitRequested;
         Loc.Changed -= Loc_Changed;
         _client.DisposeAsync().AsTask().GetAwaiter().GetResult();
