@@ -143,6 +143,11 @@ internal static class ClaudeCredentialStore
             exception is IOException or UnauthorizedAccessException or JsonException or
                 FormatException or CryptographicException)
         {
+            // A silent failure here (e.g. a trimmed build stripping DPAPI/AES-GCM) is exactly what
+            // makes "not logged in" impossible to diagnose, so record why the desktop path gave up.
+            DiagnosticsLog.Write(
+                "ClaudeCredentialStore",
+                $"desktop token cache unreadable: {exception.GetType().Name}: {exception.Message}");
             yield break;
         }
 

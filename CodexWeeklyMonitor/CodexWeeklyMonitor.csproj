@@ -8,13 +8,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>AiTokenMonitor</AssemblyName>
     <RootNamespace>CodexWeeklyMonitor</RootNamespace>
-    <Version>1.8.2</Version>
+    <Version>1.9.0</Version>
     <Title>AI TOKEN 用量监控</Title>
     <Product>AI TOKEN 用量监控</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <DebugType>embedded</DebugType>
+    <!--
+      Never trim. DPAPI (ProtectedData) and AES-GCM decrypt the Claude desktop token cache via
+      paths the trimmer can't see, so a trimmed single-file publish silently breaks credential
+      reading (quota shows "not logged in" while local session data still works). Pinning this here
+      means any `dotnet publish` is safe, not just ones that remember the flag.
+    -->
+    <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
   <ItemGroup>
     <!-- Window.Icon and the header badge both load this at runtime. -->

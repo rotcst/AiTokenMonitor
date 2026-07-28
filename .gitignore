@@ -20,3 +20,6 @@ Thumbs.db
 ## Local app data / diagnostics
 diagnostics.log
 language.txt
+
+## WPF temporary project files
+*_wpftmp.csproj

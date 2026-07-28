@@ -214,6 +214,9 @@
                               Style="{DynamicResource ModernMenuItemStyle}"
                               IsEnabled="False"
                               Click="HistoryMenuItem_Click" />
+                    <MenuItem Header="{loc:Str menu.gauge}"
+                              Style="{DynamicResource ModernMenuItemStyle}"
+                              Click="GaugeMenuItem_Click" />
                     <MenuItem x:Name="TopmostMenuItem"
                               Header="{loc:Str menu.topmost}"
                               Style="{DynamicResource ModernMenuItemStyle}"

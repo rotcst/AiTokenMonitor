@@ -111,6 +111,10 @@ internal static class Strings
         ["menu.showWindow"] = ["显示主窗口", "Show window", "창 표시"],
         ["menu.exit"] = ["退出程序", "Exit", "종료"],
         ["menu.language"] = ["语言 / Language", "Language / 语言", "언어 / Language"],
+        ["menu.gauge"] = ["切换到仪表盘悬浮球", "Switch to gauge orb", "게이지 오브로 전환"],
+
+        // Gauge / orb mode
+        ["gauge.restoreHint"] = ["双击恢复主窗口", "Double-click to restore", "더블클릭하여 복원"],
 
         // Tray status lines
         ["tray.weeklyUnknown"] = ["{0}：周额度未知", "{0}: weekly unknown", "{0}: 주간 한도 미상"],

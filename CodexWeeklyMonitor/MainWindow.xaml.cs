@@ -45,6 +45,7 @@ public partial class MainWindow : Window
     private bool _isClosing;
     private bool _initialized;
     private ExpandedPanel _expandedPanel = ExpandedPanel.None;
+    private GaugeWindow? _gaugeWindow;
 
     public MainWindow() : this(null, enableMonitoring: true)
     {
@@ -176,6 +177,11 @@ public partial class MainWindow : Window
         {
             RenderClaude();
         }
+
+        if (IsGaugeVisible)
+        {
+            PushGaugeValues();
+        }
     }
 
     private async Task RefreshUsageAsync(bool userInitiated = false)
@@ -190,12 +196,12 @@ public partial class MainWindow : Window
         RefreshButton.IsEnabled = false;
         if (_activeProvider == UsageProvider.Codex && _currentSnapshot is null)
         {
-            ConnectionText.Text = "正在读取";
+            ConnectionText.Text = Loc.T("conn.reading");
             StatusDot.Fill = WarningBrush;
         }
         else if (_activeProvider == UsageProvider.Claude && _claudeSnapshot is null)
         {
-            ConnectionText.Text = "正在读取 Claude";
+            ConnectionText.Text = Loc.T("conn.readingClaude");
             StatusDot.Fill = WarningBrush;
         }
 
@@ -240,6 +246,11 @@ public partial class MainWindow : Window
         if (_activeProvider == UsageProvider.Codex)
         {
             RenderCodex();
+        }
+
+        if (IsGaugeVisible)
+        {
+            PushGaugeValues();
         }
     }
 
@@ -832,6 +843,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Double-click anywhere on the card (except buttons) collapses to the gauge orb.
+        if (e.ClickCount == 2)
+        {
+            e.Handled = true;
+            EnterGaugeMode();
+            return;
+        }
+
         try
         {
             DragMove();
@@ -841,6 +860,78 @@ public partial class MainWindow : Window
             // The mouse button may be released between the event and DragMove.
         }
     }
+
+    /// <summary>
+    /// Collapses the full card to the floating gauge orb. The window keeps running and polling; only
+    /// its visible form changes, so live data still flows to the orb.
+    /// </summary>
+    private void EnterGaugeMode()
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        SavePlacement();
+
+        if (_gaugeWindow is null)
+        {
+            _gaugeWindow = new GaugeWindow { Topmost = Topmost };
+            _gaugeWindow.RestoreRequested += (_, _) => RunOnDispatcher(ExitGaugeMode);
+        }
+
+        PushGaugeValues();
+
+        // Place the orb where the card's top-left was, so it appears in the same spot.
+        if (double.IsFinite(Left) && double.IsFinite(Top))
+        {
+            _gaugeWindow.Left = Left;
+            _gaugeWindow.Top = Top;
+        }
+
+        _gaugeWindow.Show();
+        _gaugeWindow.Activate();
+        ShowInTaskbar = false;
+        Hide();
+    }
+
+    private void ExitGaugeMode()
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        if (_gaugeWindow is not null)
+        {
+            // Return the card to where the orb sits now, so dragging the orb also moves the card.
+            if (double.IsFinite(_gaugeWindow.Left) && double.IsFinite(_gaugeWindow.Top))
+            {
+                Left = _gaugeWindow.Left;
+                Top = _gaugeWindow.Top;
+            }
+
+            _gaugeWindow.Hide();
+        }
+
+        Show();
+        EnsureRestoredWindow();
+        ClampToWorkArea();
+    }
+
+    private bool IsGaugeVisible => _gaugeWindow is { IsVisible: true };
+
+    /// <summary>Feeds the orb the used-percent for each provider (5-hour window if present, else weekly).</summary>
+    private void PushGaugeValues()
+    {
+        _gaugeWindow?.SetValues(
+            GaugeUsedPercent(_currentSnapshot?.RateLimits.FiveHour, _currentSnapshot?.RateLimits.Weekly),
+            GaugeUsedPercent(_claudeSnapshot?.FiveHour, _claudeSnapshot?.Weekly));
+    }
+
+    /// <summary>The percentage the orb needle points at: the 5-hour window if present, else weekly.</summary>
+    internal static int? GaugeUsedPercent(RateLimitWindow? fiveHour, RateLimitWindow? weekly) =>
+        (fiveHour ?? weekly)?.UsedPercent;
 
     private static bool IsInsideButton(DependencyObject? element)
     {
@@ -1072,6 +1163,15 @@ public partial class MainWindow : Window
     private void TopmostMenuItem_Click(object sender, RoutedEventArgs e)
     {
         Topmost = TopmostMenuItem.IsChecked;
+        if (_gaugeWindow is not null)
+        {
+            _gaugeWindow.Topmost = Topmost;
+        }
+    }
+
+    private void GaugeMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        EnterGaugeMode();
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
@@ -1138,6 +1238,13 @@ public partial class MainWindow : Window
     {
         if (_isClosing)
         {
+            return;
+        }
+
+        // If the orb is up, restoring means leaving gauge mode back to the full card.
+        if (IsGaugeVisible)
+        {
+            ExitGaugeMode();
             return;
         }
 
@@ -1211,7 +1318,10 @@ public partial class MainWindow : Window
         _lifetimeCancellation.Cancel();
         if (_monitoringEnabled)
         {
-            WindowPlacementStore.Save(new WindowPlacement(Left, Top, Topmost, _expandedPanel == ExpandedPanel.Details));
+            // In gauge mode the card is hidden; save the orb's position so the card reopens there.
+            var left = IsGaugeVisible && _gaugeWindow is { } g && double.IsFinite(g.Left) ? g.Left : Left;
+            var top = IsGaugeVisible && _gaugeWindow is { } g2 && double.IsFinite(g2.Top) ? g2.Top : Top;
+            WindowPlacementStore.Save(new WindowPlacement(left, top, Topmost, _expandedPanel == ExpandedPanel.Details));
         }
 
         base.OnClosing(e);
@@ -1219,6 +1329,8 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _gaugeWindow?.Close();
+        _gaugeWindow = null;
         _client.RefreshSuggested -= Client_RefreshSuggested;
         _localTokenMonitor.UsageUpdated -= LocalTokenMonitor_UsageUpdated;
         _claudeMonitor.UsageUpdated -= ClaudeMonitor_UsageUpdated;

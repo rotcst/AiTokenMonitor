@@ -1094,6 +1094,33 @@ Run("重置时间显示本地月日和时分", () =>
     Equal("7月29日 14:30 重置", MainWindow.FormatResetTime(resetAt));
 });
 
+Run("仪表盘取用量优先 5 小时否则周额度", () =>
+{
+    var fiveHour = new RateLimitWindow(44, DateTimeOffset.Now, 300);
+    var weekly = new RateLimitWindow(89, DateTimeOffset.Now, 10_080);
+
+    // 5-hour wins when present.
+    Equal<int?>(44, MainWindow.GaugeUsedPercent(fiveHour, weekly));
+    // Falls back to weekly when there is no 5-hour window (Codex's current shape).
+    Equal<int?>(89, MainWindow.GaugeUsedPercent(null, weekly));
+    // Nothing at all -> null (needle parks / shows --).
+    Equal<int?>(null, MainWindow.GaugeUsedPercent(null, null));
+});
+
+RunSta("仪表盘控件渲染各种取值不抛异常", () =>
+{
+    // GaugeControl is an HWND-free UserControl, so it is safe to build on a throwaway STA thread.
+    // (GaugeWindow uses a layered HwndSource whose teardown races process exit, so it is exercised
+    // manually rather than here.)
+    var gauge = new CodexWeeklyMonitor.Controls.GaugeControl();
+    gauge.Update(97, 68);
+    gauge.Update(null, null);
+    gauge.Update(0, 100);
+    gauge.Update(150, -5); // clamped, must not throw
+    gauge.Measure(new System.Windows.Size(200, 200));
+    gauge.Arrange(new System.Windows.Rect(0, 0, 200, 200));
+});
+
 Run("界面语言可切换且默认跟随系统", () =>
 {
     var original = CodexWeeklyMonitor.Services.Loc.Current;

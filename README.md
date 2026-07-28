@@ -29,6 +29,9 @@ system tray after opening the main window. Launching it again restores the exist
 - **5-hour and weekly windows** with exact reset times and countdowns.
 - **Credit balance & usage credits**, per-model weekly buckets (Opus / Sonnet / GPT-5-Codex, …),
   spend caps, and the plan's limit notices.
+- **Gauge orb mode**: double-click the card to collapse it into a small racing-dashboard orb with
+  two needles — Codex and Claude usage on one dial (5-hour window if present, else weekly). Double-click
+  the orb to expand back.
 - **Token history**: lifetime, today, last 7 days, a daily bar chart, and a scrollable full list.
 - **Current model & context usage**, read from your local session logs — works for both the
   terminal CLI and the desktop app.
