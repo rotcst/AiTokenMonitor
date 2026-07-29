@@ -15,6 +15,7 @@ using MenuItem = System.Windows.Controls.MenuItem;
 using ProgressBar = System.Windows.Controls.ProgressBar;
 using RadioButton = System.Windows.Controls.RadioButton;
 using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;
+using Point = System.Windows.Point;
 
 namespace CodexWeeklyMonitor;
 
@@ -885,11 +886,11 @@ public partial class MainWindow : Window
 
         PushGaugeValues();
 
-        // Place the orb where the card's top-left was, so it appears in the same spot.
+        // Place the visible orb where the card's top-left was. The gauge window itself also owns
+        // transparent shadow padding, which must not shift the user's saved placement.
         if (double.IsFinite(Left) && double.IsFinite(Top))
         {
-            _gaugeWindow.Left = Left;
-            _gaugeWindow.Top = Top;
+            _gaugeWindow.PlaceOrbAt(Left, Top);
         }
 
         _gaugeWindow.Show();
@@ -908,10 +909,11 @@ public partial class MainWindow : Window
         if (_gaugeWindow is not null)
         {
             // Return the card to where the orb sits now, so dragging the orb also moves the card.
-            if (double.IsFinite(_gaugeWindow.Left) && double.IsFinite(_gaugeWindow.Top))
+            var orbTopLeft = _gaugeWindow.GetOrbTopLeft();
+            if (double.IsFinite(orbTopLeft.X) && double.IsFinite(orbTopLeft.Y))
             {
-                Left = _gaugeWindow.Left;
-                Top = _gaugeWindow.Top;
+                Left = orbTopLeft.X;
+                Top = orbTopLeft.Y;
             }
 
             _gaugeWindow.Hide();
@@ -1322,8 +1324,11 @@ public partial class MainWindow : Window
         if (_monitoringEnabled)
         {
             // In gauge mode the card is hidden; save the orb's position so the card reopens there.
-            var left = IsGaugeVisible && _gaugeWindow is { } g && double.IsFinite(g.Left) ? g.Left : Left;
-            var top = IsGaugeVisible && _gaugeWindow is { } g2 && double.IsFinite(g2.Top) ? g2.Top : Top;
+            var orbTopLeft = IsGaugeVisible && _gaugeWindow is { } gauge
+                ? gauge.GetOrbTopLeft()
+                : new Point(Left, Top);
+            var left = double.IsFinite(orbTopLeft.X) ? orbTopLeft.X : Left;
+            var top = double.IsFinite(orbTopLeft.Y) ? orbTopLeft.Y : Top;
             WindowPlacementStore.Save(new WindowPlacement(left, top, Topmost, _expandedPanel == ExpandedPanel.Details));
         }
 

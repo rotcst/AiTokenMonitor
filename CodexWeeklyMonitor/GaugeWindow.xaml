@@ -1,42 +1,105 @@
 <Window x:Class="CodexWeeklyMonitor.GaugeWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CodexWeeklyMonitor"
         xmlns:loc="clr-namespace:CodexWeeklyMonitor.Localization"
         Title="AI Token"
-        Width="150"
-        Height="150"
+        Width="{x:Static local:GaugeWindow.ShadowCanvasWidth}"
+        Height="{x:Static local:GaugeWindow.ShadowCanvasHeight}"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
-        Background="Transparent"
+        Background="{x:Null}"
         ShowInTaskbar="False"
         Topmost="True"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         MouseLeftButtonDown="Window_MouseLeftButtonDown">
-    <Grid ToolTip="{loc:Str gauge.restoreHint}">
-        <!-- Orb face: a domed dark disc (radial vignette) under a thin bright bezel. -->
-        <Ellipse Margin="4.5">
+    <!--
+        The visible orb remains 150x150. The larger transparent canvas is deliberate: WPF clips
+        bitmap effects at the window boundary, so a shadow needs real breathing room around it.
+    -->
+    <Canvas x:Name="ShadowCanvas"
+            ClipToBounds="False"
+            ToolTip="{loc:Str gauge.restoreHint}">
+        <!-- A wide, low-contrast ground shadow keeps the orb visually anchored without a hard edge. -->
+        <Ellipse x:Name="GroundShadow"
+                 Canvas.Left="43"
+                 Canvas.Top="158"
+                 Width="104"
+                 Height="26"
+                 IsHitTestVisible="False">
             <Ellipse.Fill>
-                <RadialGradientBrush GradientOrigin="0.5,0.32" Center="0.5,0.42" RadiusX="0.75" RadiusY="0.75">
-                    <GradientStop Offset="0" Color="#FF232935" />
-                    <GradientStop Offset="0.72" Color="#FF161A22" />
-                    <GradientStop Offset="1" Color="#FF0E1117" />
+                <RadialGradientBrush Center="0.5,0.42"
+                                     GradientOrigin="0.5,0.42"
+                                     RadiusX="0.5"
+                                     RadiusY="0.5">
+                    <GradientStop Offset="0" Color="#3A000000" />
+                    <GradientStop Offset="0.58" Color="#1E000000" />
+                    <GradientStop Offset="1" Color="#00000000" />
                 </RadialGradientBrush>
             </Ellipse.Fill>
+        </Ellipse>
+
+        <!-- Broad ambient penumbra: soft, shallow and intentionally low-opacity. -->
+        <Ellipse x:Name="AmbientShadow"
+                 Canvas.Left="{x:Static local:GaugeWindow.OrbOffsetX}"
+                 Canvas.Top="{x:Static local:GaugeWindow.OrbOffsetY}"
+                 Width="{x:Static local:GaugeWindow.OrbDiameter}"
+                 Height="{x:Static local:GaugeWindow.OrbDiameter}"
+                 Fill="#FF0E1117"
+                 IsHitTestVisible="False">
             <Ellipse.Effect>
-                <DropShadowEffect BlurRadius="15"
+                <DropShadowEffect BlurRadius="18"
                                   Direction="270"
-                                  ShadowDepth="3"
-                                  Opacity="0.5"
-                                  Color="#000000" />
+                                  ShadowDepth="4"
+                                  Opacity="0.22"
+                                  Color="#05070A"
+                                  RenderingBias="Quality" />
             </Ellipse.Effect>
         </Ellipse>
-        <Ellipse Margin="4.5"
-                 Stroke="#2AFFFFFF"
-                 StrokeThickness="1.2" />
-        <ContentControl x:Name="GaugeHost"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center" />
-    </Grid>
+
+        <!-- Tighter contact shadow adds depth under the lower rim without turning into a black ring. -->
+        <Ellipse x:Name="ContactShadow"
+                 Canvas.Left="{x:Static local:GaugeWindow.OrbOffsetX}"
+                 Canvas.Top="{x:Static local:GaugeWindow.OrbOffsetY}"
+                 Width="{x:Static local:GaugeWindow.OrbDiameter}"
+                 Height="{x:Static local:GaugeWindow.OrbDiameter}"
+                 Fill="#FF0E1117"
+                 IsHitTestVisible="False">
+            <Ellipse.Effect>
+                <DropShadowEffect BlurRadius="9"
+                                  Direction="270"
+                                  ShadowDepth="7"
+                                  Opacity="0.16"
+                                  Color="#020305"
+                                  RenderingBias="Quality" />
+            </Ellipse.Effect>
+        </Ellipse>
+
+        <Grid x:Name="OrbSurface"
+              Canvas.Left="{x:Static local:GaugeWindow.OrbOffsetX}"
+              Canvas.Top="{x:Static local:GaugeWindow.OrbOffsetY}"
+              Width="{x:Static local:GaugeWindow.OrbDiameter}"
+              Height="{x:Static local:GaugeWindow.OrbDiameter}">
+            <!-- Orb face: a domed dark disc (radial vignette) under a thin bright bezel. -->
+            <Ellipse>
+                <Ellipse.Fill>
+                    <RadialGradientBrush GradientOrigin="0.5,0.32"
+                                         Center="0.5,0.42"
+                                         RadiusX="0.75"
+                                         RadiusY="0.75">
+                        <GradientStop Offset="0" Color="#FF232935" />
+                        <GradientStop Offset="0.72" Color="#FF161A22" />
+                        <GradientStop Offset="1" Color="#FF0E1117" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+            <Ellipse Stroke="#2AFFFFFF"
+                     StrokeThickness="1.2" />
+            <ContentControl x:Name="GaugeHost"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center" />
+        </Grid>
+    </Canvas>
 </Window>

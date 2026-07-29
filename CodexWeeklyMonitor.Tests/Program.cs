@@ -1321,7 +1321,7 @@ RunSta("仪表盘控件渲染各种取值不抛异常", () =>
     gauge.Arrange(new System.Windows.Rect(0, 0, 200, 200));
 });
 
-RunSta("仪表盘悬浮窗实际尺寸为 150×150", () =>
+RunSta("仪表盘可视直径保持 150 且阴影不会被窗口裁剪", () =>
 {
     var gaugeWindow = new GaugeWindow();
     try
@@ -1329,10 +1329,35 @@ RunSta("仪表盘悬浮窗实际尺寸为 150×150", () =>
         gaugeWindow.SetValues(13, 65);
         gaugeWindow.Show();
         gaugeWindow.UpdateLayout();
-        Equal(150d, gaugeWindow.Width);
-        Equal(150d, gaugeWindow.Height);
-        Equal(150d, gaugeWindow.ActualWidth);
-        Equal(150d, gaugeWindow.ActualHeight);
+        Equal(150d, GaugeWindow.OrbDiameter);
+        Equal(190d, gaugeWindow.Width);
+        Equal(198d, gaugeWindow.Height);
+        Equal(190d, gaugeWindow.ActualWidth);
+        Equal(198d, gaugeWindow.ActualHeight);
+
+        if (GaugeWindow.OrbOffsetX < 18d ||
+            GaugeWindow.ShadowCanvasWidth - GaugeWindow.OrbOffsetX - GaugeWindow.OrbDiameter < 18d ||
+            GaugeWindow.ShadowCanvasHeight - GaugeWindow.OrbOffsetY - GaugeWindow.OrbDiameter < 30d)
+        {
+            throw new Exception("仪表盘阴影画布未保留足够的透明扩散空间。");
+        }
+
+        var ambient = (System.Windows.Shapes.Ellipse)gaugeWindow.FindName("AmbientShadow");
+        var contact = (System.Windows.Shapes.Ellipse)gaugeWindow.FindName("ContactShadow");
+        var ambientEffect = (System.Windows.Media.Effects.DropShadowEffect)ambient.Effect;
+        var contactEffect = (System.Windows.Media.Effects.DropShadowEffect)contact.Effect;
+        if (ambientEffect.Opacity >= 0.3 ||
+            contactEffect.Opacity >= ambientEffect.Opacity ||
+            ambientEffect.BlurRadius <= contactEffect.BlurRadius ||
+            contactEffect.ShadowDepth <= ambientEffect.ShadowDepth)
+        {
+            throw new Exception("仪表盘没有形成柔和环境影与紧凑接触影的自然层次。");
+        }
+
+        gaugeWindow.PlaceOrbAt(420d, 260d);
+        var topLeft = gaugeWindow.GetOrbTopLeft();
+        Equal(420d, topLeft.X);
+        Equal(260d, topLeft.Y);
     }
     finally
     {
