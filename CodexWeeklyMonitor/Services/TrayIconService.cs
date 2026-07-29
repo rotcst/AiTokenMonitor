@@ -12,6 +12,8 @@ internal interface ITrayIconService : IDisposable
 
     event EventHandler? RefreshRequested;
 
+    event EventHandler? UpdateRequested;
+
     event EventHandler? ExitRequested;
 
     bool Visible { get; set; }
@@ -46,6 +48,7 @@ internal sealed class TrayIconService : ITrayIconService
     // Icon ids stored on each item's Tag so the renderer can draw a matching glyph.
     private const string IconShow = "show";
     private const string IconRefresh = "refresh";
+    private const string IconUpdate = "update";
     private const string IconGlobe = "globe";
     private const string IconExit = "exit";
 
@@ -54,6 +57,7 @@ internal sealed class TrayIconService : ITrayIconService
     private readonly Forms.ContextMenuStrip _menu;
     private readonly Forms.ToolStripMenuItem _showItem;
     private readonly Forms.ToolStripMenuItem _refreshItem;
+    private readonly Forms.ToolStripMenuItem _updateItem;
     private readonly Forms.ToolStripMenuItem _codexStatusItem;
     private readonly Forms.ToolStripMenuItem _claudeStatusItem;
     private readonly Forms.ToolStripMenuItem _languageItem;
@@ -74,6 +78,8 @@ internal sealed class TrayIconService : ITrayIconService
         _showItem.Tag = IconShow;
         _refreshItem = CreateMenuItem(() => RefreshRequested?.Invoke(this, EventArgs.Empty));
         _refreshItem.Tag = IconRefresh;
+        _updateItem = CreateMenuItem(() => UpdateRequested?.Invoke(this, EventArgs.Empty));
+        _updateItem.Tag = IconUpdate;
         _codexStatusItem = CreateStatusItem();
         _claudeStatusItem = CreateStatusItem();
         _languageItem = new Forms.ToolStripMenuItem { Tag = IconGlobe };
@@ -105,6 +111,7 @@ internal sealed class TrayIconService : ITrayIconService
         [
             _showItem,
             _refreshItem,
+            _updateItem,
             CreateSeparator(),
             _codexStatusItem,
             _claudeStatusItem,
@@ -134,6 +141,8 @@ internal sealed class TrayIconService : ITrayIconService
     public event EventHandler? ShowRequested;
 
     public event EventHandler? RefreshRequested;
+
+    public event EventHandler? UpdateRequested;
 
     public event EventHandler? ExitRequested;
 
@@ -230,6 +239,7 @@ internal sealed class TrayIconService : ITrayIconService
     {
         _showItem.Text = Loc.T("menu.showWindow");
         _refreshItem.Text = Loc.T("menu.refresh");
+        _updateItem.Text = Loc.T("menu.checkUpdates");
         _languageItem.Text = Loc.T("menu.language");
         _exitItem.Text = Loc.T("menu.exit");
 
@@ -498,6 +508,16 @@ internal sealed class TrayIconService : ITrayIconService
                         new PointF(ex, ey),
                         new PointF(ex, ey - (4f * scale)),
                     ]);
+                    break;
+                case IconUpdate:
+                    g.DrawLine(pen, cx, r.Y, cx, r.Bottom - (s * 0.28f));
+                    g.DrawLines(pen,
+                    [
+                        new PointF(cx - (s * 0.24f), r.Bottom - (s * 0.5f)),
+                        new PointF(cx, r.Bottom - (s * 0.28f)),
+                        new PointF(cx + (s * 0.24f), r.Bottom - (s * 0.5f)),
+                    ]);
+                    g.DrawLine(pen, r.X + (s * 0.14f), r.Bottom, r.Right - (s * 0.14f), r.Bottom);
                     break;
                 case IconGlobe:
                     g.DrawEllipse(pen, r.X, r.Y, r.Width, r.Height);

@@ -1283,6 +1283,137 @@ Run("窗口位置未初始化时不写入也不抛出", () =>
     WindowPlacementStore.Save(new WindowPlacement(double.PositiveInfinity, double.NaN, true));
 });
 
+Run("GitHub Release 更新元数据、版本和 SHA-256 校验", () =>
+{
+    var payload = Encoding.UTF8.GetBytes("verified update payload");
+    var digest = Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
+    var releaseJson = $$"""
+        {
+          "tag_name": "v99.2.3",
+          "html_url": "https://github.com/rotcst/AiTokenMonitor/releases/tag/v99.2.3",
+          "body": "test release",
+          "draft": false,
+          "prerelease": false,
+          "assets": [
+            {
+              "name": "AiTokenMonitor-99.2.3.exe",
+              "size": {{payload.Length}},
+              "digest": "sha256:{{digest}}",
+              "browser_download_url": "https://github.com/rotcst/AiTokenMonitor/releases/download/v99.2.3/AiTokenMonitor-99.2.3.exe"
+            }
+          ]
+        }
+        """;
+
+    using var handler = new StubHttpMessageHandler(request =>
+    {
+        if (request.RequestUri?.AbsolutePath.EndsWith("/releases/latest", StringComparison.Ordinal) == true)
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(releaseJson, Encoding.UTF8, "application/json"),
+            };
+        }
+
+        var content = new ByteArrayContent(payload);
+        content.Headers.ContentLength = payload.Length;
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+    });
+    using var client = new HttpClient(handler);
+    using var service = new GitHubUpdateService(client);
+
+    var result = service.CheckForUpdateAsync().GetAwaiter().GetResult();
+    Equal(true, result.IsUpdateAvailable);
+    Equal(new Version(99, 2, 3, 0), result.Release.Version);
+    Equal(digest, result.Release.Asset.Sha256);
+
+    var directory = UpdateInstaller.GetUpdateDirectory(result.Release.TagName);
+    try
+    {
+        var downloaded = service.DownloadAsync(result.Release).GetAwaiter().GetResult();
+        Equal(payload.Length, checked((int)new FileInfo(downloaded).Length));
+        Equal(true, GitHubUpdateService.HasExpectedSha256Async(downloaded, digest).GetAwaiter().GetResult());
+    }
+    finally
+    {
+        if (Directory.Exists(directory))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    Equal(true, AppVersion.TryParseTag("v1.10.0", out var parsed));
+    Equal(new Version(1, 10, 0, 0), parsed);
+    Equal(false, GitHubUpdateService.TryParseSha256("sha256:not-a-digest", out _));
+});
+
+Run("更新元数据缺少可信摘要时拒绝安装", () =>
+{
+    var dto = new GitHubUpdateService.GitHubReleaseDto
+    {
+        TagName = "v2.0.0",
+        HtmlUrl = "https://github.com/rotcst/AiTokenMonitor/releases/tag/v2.0.0",
+        Assets =
+        [
+            new GitHubUpdateService.GitHubAssetDto
+            {
+                Name = "AiTokenMonitor-2.0.0.exe",
+                Size = 42,
+                Digest = null,
+                BrowserDownloadUrl = "https://github.com/rotcst/AiTokenMonitor/releases/download/v2.0.0/AiTokenMonitor-2.0.0.exe",
+            },
+        ],
+    };
+
+    try
+    {
+        _ = GitHubUpdateService.ParseRelease(dto);
+        throw new Exception("缺失 SHA-256 的更新仍被接受。");
+    }
+    catch (UpdateServiceException exception)
+    {
+        Equal("update.invalidMetadata", exception.ResourceKey);
+    }
+});
+
+Run("更新安装器先校验再原子替换旧程序", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), $"AiTokenMonitor-update-test-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(root);
+    try
+    {
+        var source = Path.Combine(root, "downloaded.exe");
+        var target = Path.Combine(root, "AiTokenMonitor.exe");
+        var payload = Encoding.UTF8.GetBytes("new verified executable");
+        File.WriteAllBytes(source, payload);
+        File.WriteAllText(target, "old executable");
+        var digest = Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
+
+        UpdateInstaller.ReplaceExecutable(source, target, digest);
+        Equal("new verified executable", File.ReadAllText(target));
+        Equal(false, Directory.EnumerateFiles(root, "*.update", SearchOption.TopDirectoryOnly).Any());
+
+        File.WriteAllText(target, "old executable again");
+        try
+        {
+            UpdateInstaller.ReplaceExecutable(source, target, new string('0', 64));
+            throw new Exception("摘要不匹配的更新仍替换了旧程序。");
+        }
+        catch (UpdateServiceException exception)
+        {
+            Equal("update.integrityFailed", exception.ResourceKey);
+            Equal("old executable again", File.ReadAllText(target));
+        }
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+});
+
 Run("重置时间显示本地月日和时分", () =>
 {
     var localDate = new DateTime(2026, 7, 29, 14, 30, 0, DateTimeKind.Unspecified);
@@ -1366,6 +1497,27 @@ RunSta("液面球缩小后阴影仍不会被窗口裁剪", () =>
         var topLeft = gaugeWindow.GetOrbTopLeft();
         Equal(420d, topLeft.X);
         Equal(260d, topLeft.Y);
+
+        var orbSurface = (Grid)gaugeWindow.FindName("OrbSurface");
+        var orbMenu = orbSurface.ContextMenu ?? throw new Exception("悬浮球缺少右键菜单。");
+        var updateItem = (MenuItem)gaugeWindow.FindName("GaugeCheckUpdatesMenuItem");
+        var topmostItem = (MenuItem)gaugeWindow.FindName("GaugeTopmostMenuItem");
+        var versionItem = (MenuItem)gaugeWindow.FindName("GaugeVersionMenuItem");
+        var updateRequested = false;
+        gaugeWindow.UpdateRequested += (_, _) => updateRequested = true;
+        updateItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, updateItem));
+        Equal(true, updateRequested);
+        Equal(AppVersion.Display, (string)versionItem.Header);
+
+        gaugeWindow.Topmost = true;
+        orbMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent, orbMenu));
+        Equal(true, topmostItem.IsChecked);
+        var requestedTopmost = true;
+        gaugeWindow.TopmostChangedRequested += value => requestedTopmost = value;
+        topmostItem.IsChecked = false;
+        topmostItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, topmostItem));
+        Equal(false, requestedTopmost);
+        Equal(false, gaugeWindow.Topmost);
     }
     finally
     {
@@ -1554,6 +1706,17 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
     {
         mainWindow.Show();
         Equal("AI TOKEN 用量监控", mainWindow.Title);
+        var versionText = mainWindow.FindName("AppVersionText") as TextBlock
+            ?? throw new Exception("主窗口没有显示版本号。");
+        Equal("v1.9.6", versionText.Text);
+        var updatedText = mainWindow.FindName("UpdatedText") as TextBlock
+            ?? throw new Exception("主窗口没有更新时间。");
+        var versionBorder = VisualTreeHelper.GetParent(versionText) as Border
+            ?? throw new Exception("版本号没有徽标容器。");
+        var versionAndTime = VisualTreeHelper.GetParent(versionBorder) as StackPanel
+            ?? throw new Exception("版本号与更新时间没有共用布局容器。");
+        Equal(updatedText, versionAndTime.Children[0]);
+        Equal(versionBorder, versionAndTime.Children[1]);
         var card = mainWindow.FindName("Card") as Border
             ?? throw new Exception("未找到主窗口卡片。");
         var mainContextMenu = card.ContextMenu
@@ -1579,6 +1742,8 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             ?? throw new Exception("右键菜单缺少展开详情。");
         var historyMenuItem = mainWindow.FindName("HistoryMenuItem") as MenuItem
             ?? throw new Exception("右键菜单缺少展开历史。");
+        _ = mainWindow.FindName("CheckUpdatesMenuItem") as MenuItem
+            ?? throw new Exception("主窗口右键菜单缺少检查版本更新。");
 
         // The menu describes what the entry would do right now, not a fixed label.
         mainContextMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent, mainContextMenu));
@@ -1639,6 +1804,11 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             trayItems.Single(item => item.Text == "立即刷新").PerformClick();
             Equal(true, refreshRequested);
 
+            var updateRequested = false;
+            nativeTray.UpdateRequested += (_, _) => updateRequested = true;
+            trayItems.Single(item => item.Text == "检查版本更新").PerformClick();
+            Equal(true, updateRequested);
+
             var nativeLanguageMenu = trayItems.Single(item => item.Text == "语言 / Language");
             if (!ReferenceEquals(nativeLanguageMenu.DropDown.Renderer, trayMenu.Renderer))
             {
@@ -1654,6 +1824,27 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             Equal(true, nativeEnglishItem.Checked);
             Loc.SetLanguage(AppLanguage.Chinese);
         }
+
+        // The full card and orb keep independent coordinates across repeated double-click-style
+        // switches. Moving one surface must never drag the other surface's saved position along.
+        mainWindow.Left = 310d;
+        mainWindow.Top = 170d;
+        mainWindow.UpdateLayout();
+        mainWindow.EnterGaugeMode();
+        var gaugeWindow = mainWindow.GaugeWindowForTesting
+            ?? throw new Exception("切换后没有创建悬浮球窗口。");
+        gaugeWindow.PlaceOrbAt(730d, 410d);
+        mainWindow.ExitGaugeMode();
+        Equal(310d, mainWindow.Left);
+        Equal(170d, mainWindow.Top);
+
+        mainWindow.EnterGaugeMode();
+        var gaugePosition = gaugeWindow.GetOrbTopLeft();
+        Equal(730d, gaugePosition.X);
+        Equal(410d, gaugePosition.Y);
+        mainWindow.ExitGaugeMode();
+        Equal(310d, mainWindow.Left);
+        Equal(170d, mainWindow.Top);
 
         var menuBackgroundBrush = mainWindow.TryFindResource("ModernMenuBackgroundBrush") as System.Windows.Media.Brush
             ?? throw new Exception("未加载菜单配色。");
@@ -2137,6 +2328,8 @@ sealed class FakeTrayIconService : ITrayIconService
 
     public event EventHandler? RefreshRequested;
 
+    public event EventHandler? UpdateRequested;
+
     public event EventHandler? ExitRequested;
 
     public bool Visible { get; set; } = true;
@@ -2153,6 +2346,8 @@ sealed class FakeTrayIconService : ITrayIconService
     public void RequestShow() => ShowRequested?.Invoke(this, EventArgs.Empty);
 
     public void RequestRefresh() => RefreshRequested?.Invoke(this, EventArgs.Empty);
+
+    public void RequestUpdate() => UpdateRequested?.Invoke(this, EventArgs.Empty);
 
     public void RequestExit() => ExitRequested?.Invoke(this, EventArgs.Empty);
 

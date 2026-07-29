@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private readonly CodexUsageProvider _client = new();
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly ITrayIconService _trayIcon;
+    private readonly IUpdateService _updateService;
     private readonly LocalSessionTokenMonitor _localTokenMonitor;
     private readonly ClaudeUsageMonitor _claudeMonitor;
     private readonly bool _monitoringEnabled;
@@ -49,16 +50,24 @@ public partial class MainWindow : Window
     private bool _initialized;
     private ExpandedPanel _expandedPanel = ExpandedPanel.None;
     private GaugeWindow? _gaugeWindow;
+    private Point? _gaugeTopLeft;
+    private bool _updateCheckInProgress;
+    private bool _manualUpdateResultRequested;
 
     public MainWindow() : this(null, enableMonitoring: true)
     {
     }
 
-    internal MainWindow(ITrayIconService? trayIcon, bool enableMonitoring)
+    internal MainWindow(
+        ITrayIconService? trayIcon,
+        bool enableMonitoring,
+        IUpdateService? updateService = null)
     {
         InitializeComponent();
 
         _trayIcon = trayIcon ?? new TrayIconService();
+        _updateService = updateService ?? new GitHubUpdateService();
+        AppVersionText.Text = AppVersion.Display;
         UpdateTrayTooltip();
         _localTokenMonitor = new LocalSessionTokenMonitor();
         _claudeMonitor = new ClaudeUsageMonitor();
@@ -81,6 +90,7 @@ public partial class MainWindow : Window
         _claudeMonitor.UsageUpdated += ClaudeMonitor_UsageUpdated;
         _trayIcon.ShowRequested += TrayIcon_ShowRequested;
         _trayIcon.RefreshRequested += TrayIcon_RefreshRequested;
+        _trayIcon.UpdateRequested += TrayIcon_UpdateRequested;
         _trayIcon.ExitRequested += TrayIcon_ExitRequested;
         Loc.Changed += Loc_Changed;
         Loaded += MainWindow_Loaded;
@@ -120,7 +130,21 @@ public partial class MainWindow : Window
         _claudeMonitor.Start();
         _refreshTimer.Start();
         _clockTimer.Start();
+        _ = CheckForUpdatesAfterStartupAsync();
         await RefreshUsageAsync();
+    }
+
+    private async Task CheckForUpdatesAfterStartupAsync()
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4), _lifetimeCancellation.Token);
+            await CheckForUpdatesAsync(userInitiated: false);
+        }
+        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
+        {
+            // Normal shutdown while the delayed automatic check is pending.
+        }
     }
 
     private async void RefreshTimer_Tick(object? sender, EventArgs e)
@@ -819,6 +843,11 @@ public partial class MainWindow : Window
 
         var workArea = SystemParameters.WorkArea;
         var placement = WindowPlacementStore.Load();
+        if (placement is { GaugeLeft: { } gaugeLeft, GaugeTop: { } gaugeTop } &&
+            double.IsFinite(gaugeLeft) && double.IsFinite(gaugeTop))
+        {
+            _gaugeTopLeft = new Point(gaugeLeft, gaugeTop);
+        }
         if (placement?.DetailsExpanded == true)
         {
             SetExpandedPanel(ExpandedPanel.Details);
@@ -869,7 +898,7 @@ public partial class MainWindow : Window
     /// Collapses the full card to the floating gauge orb. The window keeps running and polling; only
     /// its visible form changes, so live data still flows to the orb.
     /// </summary>
-    private void EnterGaugeMode()
+    internal void EnterGaugeMode()
     {
         if (_isClosing)
         {
@@ -882,15 +911,22 @@ public partial class MainWindow : Window
         {
             _gaugeWindow = new GaugeWindow { Topmost = Topmost };
             _gaugeWindow.RestoreRequested += (_, _) => RunOnDispatcher(ExitGaugeMode);
+            _gaugeWindow.UpdateRequested += GaugeWindow_UpdateRequested;
+            _gaugeWindow.TopmostChangedRequested += GaugeWindow_TopmostChangedRequested;
         }
 
         PushGaugeValues();
 
-        // Place the visible orb where the card's top-left was. The gauge window itself also owns
-        // transparent shadow padding, which must not shift the user's saved placement.
-        if (double.IsFinite(Left) && double.IsFinite(Top))
+        // The card and orb own independent positions. The card is only used as the first-run
+        // default; every later switch restores the orb's own last position.
+        if (_gaugeTopLeft is { } savedGauge)
+        {
+            _gaugeWindow.PlaceOrbAt(savedGauge.X, savedGauge.Y);
+        }
+        else if (double.IsFinite(Left) && double.IsFinite(Top))
         {
             _gaugeWindow.PlaceOrbAt(Left, Top);
+            _gaugeTopLeft = new Point(Left, Top);
         }
 
         _gaugeWindow.Show();
@@ -899,7 +935,7 @@ public partial class MainWindow : Window
         Hide();
     }
 
-    private void ExitGaugeMode()
+    internal void ExitGaugeMode()
     {
         if (_isClosing)
         {
@@ -908,23 +944,19 @@ public partial class MainWindow : Window
 
         if (_gaugeWindow is not null)
         {
-            // Return the card to where the orb sits now, so dragging the orb also moves the card.
-            var orbTopLeft = _gaugeWindow.GetOrbTopLeft();
-            if (double.IsFinite(orbTopLeft.X) && double.IsFinite(orbTopLeft.Y))
-            {
-                Left = orbTopLeft.X;
-                Top = orbTopLeft.Y;
-            }
-
+            CaptureGaugePlacement();
             _gaugeWindow.Hide();
         }
 
+        SavePlacement();
         Show();
         EnsureRestoredWindow();
         ClampToWorkArea();
     }
 
     private bool IsGaugeVisible => _gaugeWindow is { IsVisible: true };
+
+    internal GaugeWindow? GaugeWindowForTesting => _gaugeWindow;
 
     /// <summary>Feeds the orb each provider's remaining quota (the water level), 5-hour window if present.</summary>
     private void PushGaugeValues()
@@ -968,6 +1000,64 @@ public partial class MainWindow : Window
     private async void RefreshMenuItem_Click(object sender, RoutedEventArgs e)
     {
         await RefreshUsageAsync(userInitiated: true);
+    }
+
+    private async void CheckUpdatesMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await CheckForUpdatesAsync(userInitiated: true);
+    }
+
+    private async Task CheckForUpdatesAsync(bool userInitiated)
+    {
+        if (_isClosing || _updateCheckInProgress)
+        {
+            if (userInitiated && !_isClosing)
+            {
+                _manualUpdateResultRequested = true;
+            }
+
+            return;
+        }
+
+        _updateCheckInProgress = true;
+        try
+        {
+            var result = await _updateService.CheckForUpdateAsync(_lifetimeCancellation.Token);
+            if (result.IsUpdateAvailable)
+            {
+                UpdateDialog.ShowAvailable(
+                    IsVisible ? this : null,
+                    result.Release,
+                    _updateService,
+                    Topmost);
+            }
+            else if (userInitiated || _manualUpdateResultRequested)
+            {
+                UpdateDialog.ShowInformation(
+                    IsVisible ? this : null,
+                    Loc.T("update.upToDate", AppVersion.Display),
+                    Topmost);
+            }
+        }
+        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
+        {
+            // Closing the app cancels both automatic and user-initiated checks.
+        }
+        catch (Exception exception)
+        {
+            if (userInitiated || _manualUpdateResultRequested)
+            {
+                var message = exception is UpdateServiceException updateException
+                    ? Loc.T(updateException.ResourceKey)
+                    : Loc.T("update.checkFailed");
+                UpdateDialog.ShowInformation(IsVisible ? this : null, message, Topmost);
+            }
+        }
+        finally
+        {
+            _updateCheckInProgress = false;
+            _manualUpdateResultRequested = false;
+        }
     }
 
     private void ProviderTab_Checked(object sender, RoutedEventArgs e)
@@ -1240,8 +1330,31 @@ public partial class MainWindow : Window
         // Left/Top are meaningless once minimised, so capture before changing the state.
         if (_monitoringEnabled && WindowState == WindowState.Normal)
         {
+            CaptureGaugePlacement();
             WindowPlacementStore.Save(
-                new WindowPlacement(Left, Top, Topmost, _expandedPanel == ExpandedPanel.Details));
+                CreateWindowPlacement(Left, Top));
+        }
+    }
+
+    private WindowPlacement CreateWindowPlacement(double mainLeft, double mainTop) => new(
+        mainLeft,
+        mainTop,
+        Topmost,
+        _expandedPanel == ExpandedPanel.Details,
+        _gaugeTopLeft?.X,
+        _gaugeTopLeft?.Y);
+
+    private void CaptureGaugePlacement()
+    {
+        if (_gaugeWindow is not { } gauge)
+        {
+            return;
+        }
+
+        var position = gauge.GetOrbTopLeft();
+        if (double.IsFinite(position.X) && double.IsFinite(position.Y))
+        {
+            _gaugeTopLeft = position;
         }
     }
 
@@ -1306,6 +1419,26 @@ public partial class MainWindow : Window
         RunOnDispatcher(() => _ = RefreshUsageAsync(userInitiated: true));
     }
 
+    private void TrayIcon_UpdateRequested(object? sender, EventArgs e)
+    {
+        RunOnDispatcher(() => _ = CheckForUpdatesAsync(userInitiated: true));
+    }
+
+    private void GaugeWindow_UpdateRequested(object? sender, EventArgs e)
+    {
+        RunOnDispatcher(() => _ = CheckForUpdatesAsync(userInitiated: true));
+    }
+
+    private void GaugeWindow_TopmostChangedRequested(bool isTopmost)
+    {
+        RunOnDispatcher(() =>
+        {
+            Topmost = isTopmost;
+            TopmostMenuItem.IsChecked = isTopmost;
+            SavePlacement();
+        });
+    }
+
     private void TrayIcon_ExitRequested(object? sender, EventArgs e)
     {
         RunOnDispatcher(Close);
@@ -1330,13 +1463,8 @@ public partial class MainWindow : Window
         _lifetimeCancellation.Cancel();
         if (_monitoringEnabled)
         {
-            // In gauge mode the card is hidden; save the orb's position so the card reopens there.
-            var orbTopLeft = IsGaugeVisible && _gaugeWindow is { } gauge
-                ? gauge.GetOrbTopLeft()
-                : new Point(Left, Top);
-            var left = double.IsFinite(orbTopLeft.X) ? orbTopLeft.X : Left;
-            var top = double.IsFinite(orbTopLeft.Y) ? orbTopLeft.Y : Top;
-            WindowPlacementStore.Save(new WindowPlacement(left, top, Topmost, _expandedPanel == ExpandedPanel.Details));
+            CaptureGaugePlacement();
+            WindowPlacementStore.Save(CreateWindowPlacement(Left, Top));
         }
 
         base.OnClosing(e);
@@ -1351,12 +1479,14 @@ public partial class MainWindow : Window
         _claudeMonitor.UsageUpdated -= ClaudeMonitor_UsageUpdated;
         _trayIcon.ShowRequested -= TrayIcon_ShowRequested;
         _trayIcon.RefreshRequested -= TrayIcon_RefreshRequested;
+        _trayIcon.UpdateRequested -= TrayIcon_UpdateRequested;
         _trayIcon.ExitRequested -= TrayIcon_ExitRequested;
         Loc.Changed -= Loc_Changed;
         _client.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _localTokenMonitor.Dispose();
         _claudeMonitor.Dispose();
         _trayIcon.Dispose();
+        _updateService.Dispose();
         _lifetimeCancellation.Dispose();
         base.OnClosed(e);
     }

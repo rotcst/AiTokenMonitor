@@ -82,6 +82,43 @@
               Canvas.Top="{x:Static local:GaugeWindow.OrbOffsetY}"
               Width="{x:Static local:GaugeWindow.OrbDiameter}"
               Height="{x:Static local:GaugeWindow.OrbDiameter}">
+            <Grid.ContextMenu>
+                <ContextMenu Style="{DynamicResource ModernContextMenuStyle}"
+                             Opened="GaugeContextMenu_Opened">
+                    <MenuItem Header="{loc:Str menu.showWindow}"
+                              Style="{DynamicResource ModernMenuItemStyle}"
+                              Click="RestoreMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M4 5h16v14H4z M4 9h16" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem x:Name="GaugeCheckUpdatesMenuItem"
+                              Header="{loc:Str menu.checkUpdates}"
+                              Style="{DynamicResource ModernMenuItemStyle}"
+                              Click="CheckUpdatesMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M12 3v12 M7 10l5 5 5-5 M5 21h14" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <Separator Style="{DynamicResource ModernMenuSeparatorStyle}" />
+                    <MenuItem x:Name="GaugeTopmostMenuItem"
+                              Header="{loc:Str menu.topmost}"
+                              Style="{DynamicResource ModernMenuItemAccentStyle}"
+                              IsCheckable="True"
+                              Click="TopmostMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M9.5 3h5l-.6 6 2.6 2.8H7.5l2.6-2.8z M12 14.8V21" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <Separator Style="{DynamicResource ModernMenuSeparatorStyle}" />
+                    <MenuItem x:Name="GaugeVersionMenuItem"
+                              Style="{DynamicResource ModernMenuItemStyle}"
+                              IsEnabled="False" />
+                </ContextMenu>
+            </Grid.ContextMenu>
             <!-- Orb face: a domed dark disc (radial vignette) under a thin bright bezel. -->
             <Ellipse>
                 <Ellipse.Fill>

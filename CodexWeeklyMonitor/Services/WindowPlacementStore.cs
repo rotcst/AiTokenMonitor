@@ -53,4 +53,6 @@ public sealed record WindowPlacement(
     double Left,
     double Top,
     bool Topmost,
-    bool DetailsExpanded = false);
+    bool DetailsExpanded = false,
+    double? GaugeLeft = null,
+    double? GaugeTop = null);

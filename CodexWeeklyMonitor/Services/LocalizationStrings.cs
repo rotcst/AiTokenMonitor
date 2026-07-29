@@ -101,6 +101,7 @@ internal static class Strings
 
         // Context menu
         ["menu.refresh"] = ["立即刷新", "Refresh now", "지금 새로고침"],
+        ["menu.checkUpdates"] = ["检查版本更新", "Check for updates", "업데이트 확인"],
         ["menu.expandDetails"] = ["展开详情", "Show details", "세부정보 표시"],
         ["menu.collapseDetails"] = ["收起详情", "Hide details", "세부정보 숨기기"],
         ["menu.expandHistory"] = ["展开逐日 Token 历史", "Show daily token history", "일별 토큰 기록 표시"],
@@ -112,6 +113,28 @@ internal static class Strings
         ["menu.exit"] = ["退出程序", "Exit", "종료"],
         ["menu.language"] = ["语言 / Language", "Language / 语言", "언어 / Language"],
         ["menu.gauge"] = ["切换到液面悬浮球", "Switch to liquid orb", "액체 오브로 전환"],
+
+        // Application updates
+        ["update.title"] = ["版本更新", "Software update", "소프트웨어 업데이트"],
+        ["update.checking"] = ["正在检查最新版本…", "Checking for updates…", "업데이트 확인 중…"],
+        ["update.upToDate"] = ["当前已是最新版本（{0}）。", "You're up to date ({0}).", "현재 최신 버전입니다 ({0})."],
+        ["update.available"] = ["发现新版本 {0}。可自动下载、校验并重启完成更新。", "Version {0} is available. It can be downloaded, verified, and installed automatically.", "새 버전 {0}을 사용할 수 있습니다. 자동으로 다운로드, 검증 및 설치할 수 있습니다."],
+        ["update.versionPair"] = ["当前 {0}  →  最新 {1}", "Current {0}  →  Latest {1}", "현재 {0}  →  최신 {1}"],
+        ["update.later"] = ["稍后", "Later", "나중에"],
+        ["update.installNow"] = ["立即更新", "Update now", "지금 업데이트"],
+        ["update.ok"] = ["知道了", "OK", "확인"],
+        ["update.retry"] = ["重试", "Retry", "다시 시도"],
+        ["update.downloading"] = ["正在下载并校验更新文件，请稍候。", "Downloading and verifying the update…", "업데이트를 다운로드하고 검증하는 중입니다."],
+        ["update.progress"] = ["下载进度 {0}%", "Download {0}%", "다운로드 {0}%"],
+        ["update.restarting"] = ["校验通过，正在重启并安装新版本…", "Verified. Restarting to install…", "검증 완료. 다시 시작하여 설치 중…"],
+        ["update.checkFailed"] = ["无法连接 GitHub 检查版本，请稍后重试。", "Couldn't reach GitHub to check for updates. Try again later.", "GitHub에 연결하여 업데이트를 확인할 수 없습니다. 나중에 다시 시도하세요."],
+        ["update.assetMissing"] = ["最新版本没有可用的 Windows 单文件程序。", "The latest release has no compatible Windows executable.", "최신 릴리스에 호환되는 Windows 실행 파일이 없습니다."],
+        ["update.invalidMetadata"] = ["版本信息或文件校验信息无效，已停止更新。", "Release or integrity metadata is invalid. The update was stopped.", "릴리스 또는 무결성 정보가 잘못되어 업데이트를 중지했습니다."],
+        ["update.downloadFailed"] = ["更新文件下载失败，请检查网络后重试。", "The update download failed. Check your connection and retry.", "업데이트 다운로드에 실패했습니다. 네트워크를 확인하고 다시 시도하세요."],
+        ["update.integrityFailed"] = ["更新文件 SHA-256 校验失败，已拒绝安装。", "The update failed SHA-256 verification and was not installed.", "업데이트 SHA-256 검증에 실패하여 설치하지 않았습니다."],
+        ["update.installFailed"] = ["无法启动更新安装程序，请稍后重试。", "Couldn't start the update installer. Try again later.", "업데이트 설치 프로그램을 시작할 수 없습니다. 나중에 다시 시도하세요."],
+        ["update.errorDetail"] = ["更新没有完成：{0}", "The update didn't finish: {0}", "업데이트가 완료되지 않았습니다: {0}"],
+        ["update.installErrorDetail"] = ["更新安装失败：{0}", "Update installation failed: {0}", "업데이트 설치 실패: {0}"],
 
         // Gauge / orb mode
         ["gauge.restoreHint"] = ["双击恢复主窗口", "Double-click to restore", "더블클릭하여 복원"],

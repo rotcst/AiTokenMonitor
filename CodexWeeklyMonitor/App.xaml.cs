@@ -9,6 +9,29 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        base.OnStartup(e);
+
+        try
+        {
+            if (UpdateInstaller.TryApplyFromArguments(e.Args))
+            {
+                Shutdown();
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            System.Windows.MessageBox.Show(
+                Loc.T("update.installErrorDetail", exception.Message),
+                Loc.T("update.title"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown();
+            return;
+        }
+
+        UpdateInstaller.ScheduleCleanup(UpdateInstaller.GetCleanupPath(e.Args));
+
         _singleInstance = new SingleInstanceCoordinator();
         if (!_singleInstance.IsPrimary)
         {
@@ -16,8 +39,6 @@ public partial class App : System.Windows.Application
             Shutdown();
             return;
         }
-
-        base.OnStartup(e);
 
         var window = new MainWindow();
         MainWindow = window;

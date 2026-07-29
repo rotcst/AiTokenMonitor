@@ -16,7 +16,7 @@
 ## 다운로드
 
 **[Releases 페이지](https://github.com/rotcst/AiTokenMonitor/releases/latest)** 에서 최신 단일 파일
-`AiTokenMonitor.exe` 를 받으세요. 설치 불필요, 별도 런타임 불필요 — 자체 포함 실행 파일입니다.
+`AiTokenMonitor-x.y.z.exe` 를 받으세요. 설치 불필요, 별도 런타임 불필요 — 자체 포함 실행 파일입니다.
 더블클릭하면 메인 창을 표시한 뒤 시스템 트레이에 상주하며, 다시 실행하면 기존 창을 복원합니다.
 
 ## 기능
@@ -33,8 +33,24 @@
 - **토큰 기록**: 누적 · 오늘 · 최근 7일, 일별 막대 그래프, 스크롤 가능한 전체 목록.
 - **현재 모델과 컨텍스트 사용량**: 로컬 세션 기록에서 읽으며 터미널 CLI와 데스크톱 앱 모두 지원.
 - **3개 언어 UI**(简体中文 / English / 한국어): 시스템 언어에 따라 자동 선택, 우클릭 메뉴에서 즉시 전환.
+- **온라인 업데이트**: 시작 시 최신 GitHub 정식 Release를 자동 확인하며, 메인 창·트레이·오브 우클릭
+  메뉴에서도 수동 확인할 수 있습니다. 확인 후 EXE를 다운로드하고 크기와 SHA-256을 검증한 뒤 기존 파일을
+  교체하고 재시작합니다. GitHub 토큰은 필요 없습니다.
 - **네이티브 창 동작**: DWM 둥근 모서리, 최소화/복원 애니메이션, 작업 표시줄로 최소화, 트레이로 숨기기.
   실수로 닫지 않도록 종료는 트레이 메뉴에만 있습니다.
+
+메인 제목 옆에 현재 버전이 표시됩니다. 메인 창과 액체 오브는 각자의 화면 위치를 따로 기억하므로 전환해도
+서로의 좌표를 덮어쓰지 않습니다.
+
+## 온라인 업데이트
+
+앱은 저장소의 **최신 정식 GitHub Release**만 읽으며 초안과 프리릴리스는 무시합니다. Release에 버전과
+일치하는 `AiTokenMonitor-x.y.z.exe`(`AiTokenMonitor.exe`도 호환용으로 허용)와 유효한 GitHub
+`sha256:` 다이제스트가 있을 때만 설치할 수 있습니다. 자동으로 설치하지 않으며 **지금 업데이트**를 선택한
+뒤에만 다운로드와 재시작을 시작합니다.
+
+포터블 EXE가 있는 폴더는 현재 Windows 사용자가 쓸 수 있어야 합니다. 관리자 권한이 필요한 폴더에 두었다면
+Releases 페이지에서 새 버전을 직접 다운로드하세요.
 
 ## 사용량을 읽는 방식
 
@@ -88,6 +104,9 @@ dotnet publish CodexWeeklyMonitor\CodexWeeklyMonitor.csproj -c Release -r win-x6
   --self-contained true -p:PublishSingleFile=true `
   -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
 ```
+
+온라인 업데이트와 호환되는 Release를 만들 때는 태그와 프로젝트 버전을 맞추고(예: `v1.9.6`),
+`AiTokenMonitor-1.9.6.exe`를 업로드하세요. 클라이언트는 GitHub가 생성한 SHA-256을 검증합니다.
 
 ## 라이선스
 

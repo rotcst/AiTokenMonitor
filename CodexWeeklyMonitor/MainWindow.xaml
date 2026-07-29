@@ -209,6 +209,15 @@
                                   Data="M23 4v6h-6 M1 20v-6h6 M20.49 9A9 9 0 0 0 5.64 5.64L1 10 M3.51 15a9 9 0 0 0 14.85 3.36L23 14" />
                         </MenuItem.Icon>
                     </MenuItem>
+                    <MenuItem x:Name="CheckUpdatesMenuItem"
+                              Header="{loc:Str menu.checkUpdates}"
+                              Style="{DynamicResource ModernMenuItemStyle}"
+                              Click="CheckUpdatesMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M12 3v12 M7 10l5 5 5-5 M5 21h14" />
+                        </MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem x:Name="DetailsMenuItem"
                               Header="{loc:Str menu.expandDetails}"
                               Style="{DynamicResource ModernMenuItemStyle}"
@@ -639,12 +648,27 @@
                                FontSize="10"
                                Foreground="{StaticResource MutedTextBrush}"
                                TextTrimming="CharacterEllipsis" />
-                    <TextBlock x:Name="UpdatedText"
-                               Grid.Column="1"
-                               Margin="8,0,0,0"
-                               VerticalAlignment="Center"
-                               FontSize="10"
-                               Foreground="{StaticResource SubtleTextBrush}" />
+                    <StackPanel Grid.Column="1"
+                                Margin="8,0,0,0"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center">
+                        <TextBlock x:Name="UpdatedText"
+                                   Margin="0,0,8,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="10"
+                                   Foreground="{StaticResource SubtleTextBrush}" />
+                        <Border Padding="5,1"
+                                VerticalAlignment="Center"
+                                Background="#195353FF"
+                                BorderBrush="#505353FF"
+                                BorderThickness="1"
+                                CornerRadius="5">
+                            <TextBlock x:Name="AppVersionText"
+                                       FontSize="8.5"
+                                       FontWeight="SemiBold"
+                                       Foreground="#FFA9ABFF" />
+                        </Border>
+                    </StackPanel>
                 </Grid>
 
                 <Border x:Name="HistoryPanel"

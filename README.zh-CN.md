@@ -13,8 +13,8 @@
 
 ## 下载
 
-到 **[Releases 页面](https://github.com/rotcst/AiTokenMonitor/releases/latest)** 下载最新的单文件
-`AiTokenMonitor.exe`。免安装、无需另装运行时——自包含单文件，双击后直接显示主窗口并驻留在系统托盘；
+到 **[Releases 页面](https://github.com/rotcst/AiTokenMonitor/releases/latest)** 下载最新的版本化单文件
+`AiTokenMonitor-x.y.z.exe`。免安装、无需另装运行时——自包含单文件，双击后直接显示主窗口并驻留在系统托盘；
 重复启动会唤醒已有窗口。
 
 ## 功能
@@ -31,8 +31,21 @@
 - **Token 历史**：累计、当天、近 7 天、逐日柱状图，以及可滚动的完整列表。
 - **当前模型与上下文占用**，从本机会话记录读取——终端 CLI 和桌面端都适用。
 - **三语界面**（简体中文 / English / 한국어），按系统语言自动选择，可在任一右键菜单里随时切换。
+- **在线更新**：启动后自动检查 GitHub 最新正式版；也可从主窗口、系统托盘或悬浮球右键菜单手动检查。
+  确认更新后会自动下载、核对文件大小与 SHA-256、替换原 EXE 并重启，整个过程不需要 GitHub Token。
 - **原生窗口行为**：DWM 系统圆角、最小化/恢复动画、最小化到任务栏、隐藏到托盘；退出只在托盘菜单，
   避免误关。
+
+主窗口标题旁会显示当前版本号。主窗口与悬浮球分别保存自己的屏幕位置，来回切换不会互相覆盖坐标。
+
+## 在线更新
+
+程序只读取 `rotcst/AiTokenMonitor` 的 GitHub **最新正式 Release**（忽略草稿和预发布版）。只有 Release
+中存在匹配版本的 `AiTokenMonitor-x.y.z.exe`（兼容无版本后缀的 `AiTokenMonitor.exe`），并且 GitHub
+提供有效的 `sha256:` 摘要时才允许安装。安装前会明确询问；选择“立即更新”后才下载和重启。
+
+便携程序所在目录必须对当前 Windows 用户可写。如果 EXE 被放在需要管理员权限的目录，自动替换会失败，
+此时可从 Releases 页面手动下载新版。
 
 ## 用量数据从哪来
 
@@ -81,6 +94,9 @@ dotnet publish CodexWeeklyMonitor\CodexWeeklyMonitor.csproj -c Release -r win-x6
   --self-contained true -p:PublishSingleFile=true `
   -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
 ```
+
+发布供在线更新识别的 Release 时，Tag 与项目版本应一致（例如 `v1.9.6`），资产命名为
+`AiTokenMonitor-1.9.6.exe`。GitHub 生成的 SHA-256 摘要会被客户端用于安装前校验。
 
 ## 许可证
 

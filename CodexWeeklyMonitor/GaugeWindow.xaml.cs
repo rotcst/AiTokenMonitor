@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using CodexWeeklyMonitor.Controls;
+using CodexWeeklyMonitor.Services;
 using Point = System.Windows.Point;
 
 namespace CodexWeeklyMonitor;
@@ -35,10 +36,17 @@ public partial class GaugeWindow : Window
     {
         InitializeComponent();
         GaugeHost.Content = _gauge;
+        GaugeVersionMenuItem.Header = AppVersion.Display;
     }
 
     /// <summary>Raised when the user double-clicks the orb to return to the full window.</summary>
     public event EventHandler? RestoreRequested;
+
+    /// <summary>Raised when the orb menu asks the owner to check GitHub Releases.</summary>
+    public event EventHandler? UpdateRequested;
+
+    /// <summary>Keeps the full card's persisted topmost preference in sync with the orb menu.</summary>
+    public event Action<bool>? TopmostChangedRequested;
 
     public void SetValues(int? codexPercent, int? claudePercent) =>
         _gauge.Update(codexPercent, claudePercent);
@@ -73,5 +81,20 @@ public partial class GaugeWindow : Window
         {
             // The button may be released between the event and DragMove.
         }
+    }
+
+    private void RestoreMenuItem_Click(object sender, RoutedEventArgs e) =>
+        RestoreRequested?.Invoke(this, EventArgs.Empty);
+
+    private void CheckUpdatesMenuItem_Click(object sender, RoutedEventArgs e) =>
+        UpdateRequested?.Invoke(this, EventArgs.Empty);
+
+    private void GaugeContextMenu_Opened(object sender, RoutedEventArgs e) =>
+        GaugeTopmostMenuItem.IsChecked = Topmost;
+
+    private void TopmostMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        Topmost = GaugeTopmostMenuItem.IsChecked;
+        TopmostChangedRequested?.Invoke(Topmost);
     }
 }

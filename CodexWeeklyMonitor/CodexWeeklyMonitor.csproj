@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>AiTokenMonitor</AssemblyName>
     <RootNamespace>CodexWeeklyMonitor</RootNamespace>
-    <Version>1.9.5</Version>
+    <Version>1.9.6</Version>
     <Title>AI TOKEN 用量监控</Title>
     <Product>AI TOKEN 用量监控</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
