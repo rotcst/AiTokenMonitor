@@ -37,7 +37,9 @@ internal static class ClaudeCredentialStore
     /// </summary>
     public static IReadOnlyList<ClaudeOAuthToken> ResolveAll(
         string? claudeHome = null,
-        string? desktopDirectory = null)
+        string? desktopDirectory = null,
+        string? localApplicationData = null,
+        string? roamingApplicationData = null)
     {
         var candidates = new List<ClaudeOAuthToken>();
 
@@ -51,12 +53,19 @@ internal static class ClaudeCredentialStore
             candidates.Add(fromCli);
         }
 
-        candidates.AddRange(ReadFromDesktopApp(ResolveDesktopDirectory(desktopDirectory)));
+        foreach (var directory in ResolveDesktopDirectories(
+                     desktopDirectory,
+                     localApplicationData,
+                     roamingApplicationData))
+        {
+            candidates.AddRange(ReadFromDesktopApp(directory));
+        }
 
         // Expired tokens stay in the list only as a last resort, so the caller can tell
         // "never logged in" apart from "the login went stale".
         return candidates
             .OrderBy(token => token.IsExpired)
+            .DistinctBy(token => token.AccessToken, StringComparer.Ordinal)
             .ToArray();
     }
 
@@ -168,6 +177,10 @@ internal static class ClaudeCredentialStore
             catch (Exception exception) when (
                 exception is JsonException or FormatException or CryptographicException)
             {
+                DiagnosticsLog.Write(
+                    "ClaudeCredentialStore",
+                    $"desktop token entry unreadable: {configPath}#{propertyName}: " +
+                    $"{exception.GetType().Name}: {exception.Message}");
                 continue;
             }
 
@@ -280,11 +293,75 @@ internal static class ClaudeCredentialStore
         return ClaudePaths.ResolveHome(claudeHome);
     }
 
-    private static string ResolveDesktopDirectory(string? desktopDirectory)
+    internal static IReadOnlyList<string> ResolveDesktopDirectories(
+        string? desktopDirectory = null,
+        string? localApplicationData = null,
+        string? roamingApplicationData = null)
     {
-        return string.IsNullOrWhiteSpace(desktopDirectory)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Claude")
-            : Path.GetFullPath(desktopDirectory);
+        if (!string.IsNullOrWhiteSpace(desktopDirectory))
+        {
+            return [Path.GetFullPath(desktopDirectory)];
+        }
+
+        var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var roamingRoot = string.IsNullOrWhiteSpace(roamingApplicationData)
+            ? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
+            : Path.GetFullPath(roamingApplicationData);
+        directories.Add(Path.Combine(roamingRoot, "Claude"));
+
+        var localRoot = string.IsNullOrWhiteSpace(localApplicationData)
+            ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+            : Path.GetFullPath(localApplicationData);
+        AddIfCredentialDirectory(directories, Path.Combine(localRoot, "Claude"));
+        AddIfCredentialDirectory(directories, Path.Combine(localRoot, "AnthropicClaude"));
+
+        var packagesDirectory = Path.Combine(localRoot, "Packages");
+        if (!Directory.Exists(packagesDirectory))
+        {
+            return directories.ToArray();
+        }
+
+        try
+        {
+            foreach (var packageDirectory in Directory.EnumerateDirectories(
+                         packagesDirectory,
+                         "*",
+                         SearchOption.TopDirectoryOnly))
+            {
+                if (!Path.GetFileName(packageDirectory).Contains(
+                        "Claude",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                // Microsoft Store/MSIX packages redirect %APPDATA% into LocalCache\Roaming.
+                AddIfCredentialDirectory(
+                    directories,
+                    Path.Combine(packageDirectory, "LocalCache", "Roaming", "Claude"));
+                AddIfCredentialDirectory(
+                    directories,
+                    Path.Combine(packageDirectory, "LocalState", "Claude"));
+                AddIfCredentialDirectory(directories, Path.Combine(packageDirectory, "LocalState"));
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            DiagnosticsLog.Write(
+                "ClaudeCredentialStore",
+                $"Claude package discovery failed: {exception.GetType().Name}: {exception.Message}");
+        }
+
+        return directories.ToArray();
+    }
+
+    private static void AddIfCredentialDirectory(ISet<string> directories, string candidate)
+    {
+        if (File.Exists(Path.Combine(candidate, "config.json")) &&
+            File.Exists(Path.Combine(candidate, "Local State")))
+        {
+            directories.Add(candidate);
+        }
     }
 
     private static string? TryGetString(JsonElement element, string name)

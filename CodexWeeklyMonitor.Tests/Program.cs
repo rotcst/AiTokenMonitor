@@ -4,6 +4,8 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -910,6 +912,80 @@ Run("从 CLI 凭据和桌面端令牌缓存解析 Claude 访问令牌", () =>
     Equal("sk-ant-oat-desktop", desktopTokens[0].AccessToken);
     Equal("pro", desktopTokens[0].SubscriptionType);
     Equal(true, desktopTokens[0].IsExpired);
+});
+
+Run("自动发现并解密 Microsoft Store Claude 桌面凭据", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), "AiTokenMonitorTests", Guid.NewGuid().ToString("N"));
+    var localRoot = Path.Combine(root, "Local");
+    var roamingRoot = Path.Combine(root, "Roaming");
+    var claudeHome = Path.Combine(root, "ClaudeHome");
+    var desktopDirectory = Path.Combine(
+        localRoot,
+        "Packages",
+        "Claude_test",
+        "LocalCache",
+        "Roaming",
+        "Claude");
+    Directory.CreateDirectory(desktopDirectory);
+    Directory.CreateDirectory(claudeHome);
+
+    try
+    {
+        var key = RandomNumberGenerator.GetBytes(32);
+        var protectedKey = ProtectedData.Protect(key, optionalEntropy: null, DataProtectionScope.CurrentUser);
+        var keyBlob = new byte[5 + protectedKey.Length];
+        Encoding.ASCII.GetBytes("DPAPI").CopyTo(keyBlob, 0);
+        protectedKey.CopyTo(keyBlob, 5);
+        File.WriteAllText(
+            Path.Combine(desktopDirectory, "Local State"),
+            JsonSerializer.Serialize(new
+            {
+                os_crypt = new { encrypted_key = Convert.ToBase64String(keyBlob) },
+            }));
+
+        const string expectedToken = "sk-ant-oat-msix-fixture";
+        var plaintext = JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["acct:device:https://api.anthropic.com:user:inference user:profile"] = new
+            {
+                token = expectedToken,
+                expiresAt = DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeMilliseconds(),
+                subscriptionType = "max",
+            },
+        });
+        File.WriteAllText(
+            Path.Combine(desktopDirectory, "config.json"),
+            JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["oauth:tokenCacheV2"] = EncryptDesktopTokenCache(plaintext, key),
+            }));
+
+        var discovered = ClaudeCredentialStore.ResolveDesktopDirectories(
+            localApplicationData: localRoot,
+            roamingApplicationData: roamingRoot);
+        if (!discovered.Contains(desktopDirectory, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new Exception("没有发现 Microsoft Store Claude 的 LocalCache\\Roaming 凭据目录。");
+        }
+
+        var resolved = ClaudeCredentialStore.ResolveAll(
+            claudeHome,
+            desktopDirectory: null,
+            localApplicationData: localRoot,
+            roamingApplicationData: roamingRoot);
+        var token = resolved.SingleOrDefault(item => item.AccessToken == expectedToken)
+            ?? throw new Exception("没有从 Microsoft Store Claude 凭据目录解密出访问令牌。");
+        Equal("max", token.SubscriptionType);
+        Equal(false, token.IsExpired);
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 });
 
 Run("陈旧的 Claude 令牌返回 401 时自动改用下一个凭据", () =>
@@ -1964,6 +2040,25 @@ static string CreateCodexTokenEvent(DateTimeOffset timestamp, long totalTokens, 
             },
         },
     });
+}
+
+static string EncryptDesktopTokenCache(string plaintext, byte[] key)
+{
+    var nonce = RandomNumberGenerator.GetBytes(12);
+    var plaintextBytes = Encoding.UTF8.GetBytes(plaintext);
+    var ciphertext = new byte[plaintextBytes.Length];
+    var tag = new byte[16];
+    using (var aes = new AesGcm(key, tag.Length))
+    {
+        aes.Encrypt(nonce, plaintextBytes, ciphertext, tag);
+    }
+
+    var blob = new byte[3 + nonce.Length + ciphertext.Length + tag.Length];
+    Encoding.ASCII.GetBytes("v10").CopyTo(blob, 0);
+    nonce.CopyTo(blob, 3);
+    ciphertext.CopyTo(blob, 3 + nonce.Length);
+    tag.CopyTo(blob, 3 + nonce.Length + ciphertext.Length);
+    return Convert.ToBase64String(blob);
 }
 
 static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent)

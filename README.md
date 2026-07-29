@@ -47,7 +47,7 @@ client already writes locally:
 
 | | Terminal CLI | Desktop app |
 | --- | --- | --- |
-| Claude credentials | `<CLAUDE_CONFIG_DIR or ~/.claude>/.credentials.json` | `%APPDATA%\Claude\config.json` (OSCrypt-decrypted) |
+| Claude credentials | `<CLAUDE_CONFIG_DIR or ~/.claude>/.credentials.json` | `%APPDATA%\Claude\config.json`, or Microsoft Store `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\config.json` (OSCrypt-decrypted) |
 | Claude sessions | `<CLAUDE_CONFIG_DIR or ~/.claude>/projects/**/*.jsonl` | same directory |
 | Codex credentials | `<CODEX_HOME or ~/.codex>/auth.json` | same file |
 | Codex sessions | `<CODEX_HOME or ~/.codex>/sessions/**` | plus `archived_sessions/**` |

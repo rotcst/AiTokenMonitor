@@ -39,7 +39,7 @@
 
 | | 终端 CLI | 桌面端 |
 | --- | --- | --- |
-| Claude 凭据 | `<CLAUDE_CONFIG_DIR 或 ~/.claude>/.credentials.json` | `%APPDATA%\Claude\config.json`（OSCrypt 解密） |
+| Claude 凭据 | `<CLAUDE_CONFIG_DIR 或 ~/.claude>/.credentials.json` | `%APPDATA%\Claude\config.json`，或 Microsoft Store 版 `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\config.json`（OSCrypt 解密） |
 | Claude 会话 | `<CLAUDE_CONFIG_DIR 或 ~/.claude>/projects/**/*.jsonl` | 同一目录 |
 | Codex 凭据 | `<CODEX_HOME 或 ~/.codex>/auth.json` | 同一文件 |
 | Codex 会话 | `<CODEX_HOME 或 ~/.codex>/sessions/**` | 追加 `archived_sessions/**` |

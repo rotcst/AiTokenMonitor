@@ -43,7 +43,7 @@
 
 | | 터미널 CLI | 데스크톱 앱 |
 | --- | --- | --- |
-| Claude 자격 증명 | `<CLAUDE_CONFIG_DIR 또는 ~/.claude>/.credentials.json` | `%APPDATA%\Claude\config.json` (OSCrypt 복호화) |
+| Claude 자격 증명 | `<CLAUDE_CONFIG_DIR 또는 ~/.claude>/.credentials.json` | `%APPDATA%\Claude\config.json` 또는 Microsoft Store `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\config.json` (OSCrypt 복호화) |
 | Claude 세션 | `<CLAUDE_CONFIG_DIR 또는 ~/.claude>/projects/**/*.jsonl` | 같은 폴더 |
 | Codex 자격 증명 | `<CODEX_HOME 또는 ~/.codex>/auth.json` | 같은 파일 |
 | Codex 세션 | `<CODEX_HOME 또는 ~/.codex>/sessions/**` | + `archived_sessions/**` |
