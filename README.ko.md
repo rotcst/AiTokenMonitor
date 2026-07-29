@@ -74,7 +74,7 @@ UI 는 简体中文 · English · 한국어 를 제공합니다. 첫 실행 시 
 
 ## 소스에서 빌드
 
-.NET SDK 가 필요합니다(대상 프레임워크 net8.0-windows; .NET 8/9/10 SDK 로 빌드 가능).
+안정적인 .NET 10 SDK가 필요합니다(`net10.0-windows` 대상, `global.json`으로 고정).
 
 ```powershell
 git clone https://github.com/rotcst/AiTokenMonitor.git

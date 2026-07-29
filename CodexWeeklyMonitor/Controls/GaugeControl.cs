@@ -26,17 +26,18 @@ namespace CodexWeeklyMonitor.Controls;
 /// </remarks>
 public sealed class GaugeControl : UserControl
 {
-    internal const double ControlSize = 92;
-    internal const double ReadoutTop = 63;
+    private const double Scale = 1.5;
+    internal const double ControlSize = 92 * Scale;
+    internal const double ReadoutTop = 63 * Scale;
     private const double Size = ControlSize;
     private const double Center = Size / 2;
     private const double MinAngle = -125;
     private const double Sweep = 250;
     private const double RedlineStart = 85;
 
-    private const double CodexRadius = 36;
-    private const double ClaudeRadius = 26;
-    private const double RingThickness = 4.2;
+    private const double CodexRadius = 36 * Scale;
+    private const double ClaudeRadius = 26 * Scale;
+    private const double RingThickness = 4.2 * Scale;
 
     private static readonly Color CodexColor = Color.FromRgb(0x6C, 0xE0, 0x7A);
     private static readonly Color ClaudeColor = Color.FromRgb(0xF0, 0x9A, 0x6E);
@@ -76,8 +77,8 @@ public sealed class GaugeControl : UserControl
         // Chrome-look hub.
         var hub = new Ellipse
         {
-            Width = 10,
-            Height = 10,
+            Width = 10 * Scale,
+            Height = 10 * Scale,
             Fill = new RadialGradientBrush(
                 Color.FromRgb(0x5A, 0x63, 0x70),
                 Color.FromRgb(0x20, 0x25, 0x2D))
@@ -86,10 +87,10 @@ public sealed class GaugeControl : UserControl
                 Center = new Point(0.35, 0.3),
             },
             Stroke = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
-            StrokeThickness = 1,
+            StrokeThickness = Scale,
         };
-        Canvas.SetLeft(hub, Center - 5);
-        Canvas.SetTop(hub, Center - 5);
+        Canvas.SetLeft(hub, Center - (5 * Scale));
+        Canvas.SetTop(hub, Center - (5 * Scale));
         AddStatic(hub);
 
         // Digital readouts stacked in the bottom gap, colour-matched to their ring.
@@ -116,8 +117,8 @@ public sealed class GaugeControl : UserControl
 
         _dynamic.Clear();
 
-        DrawProvider(codexPercent, CodexRadius, CodexColor, 32);
-        DrawProvider(claudePercent, ClaudeRadius, ClaudeColor, 22);
+        DrawProvider(codexPercent, CodexRadius, CodexColor, 32 * Scale);
+        DrawProvider(claudePercent, ClaudeRadius, ClaudeColor, 22 * Scale);
 
         _codexReadout.Text = FormatPercent(codexPercent);
         _claudeReadout.Text = FormatPercent(claudePercent);
@@ -174,8 +175,8 @@ public sealed class GaugeControl : UserControl
 
     private static Line BuildTick(double percent, bool major)
     {
-        var outer = PointFor(percent, CodexRadius + RingThickness / 2 + 1.5);
-        var inner = PointFor(percent, CodexRadius + RingThickness / 2 + (major ? 5.5 : 3));
+        var outer = PointFor(percent, CodexRadius + RingThickness / 2 + (1.5 * Scale));
+        var inner = PointFor(percent, CodexRadius + RingThickness / 2 + ((major ? 5.5 : 3) * Scale));
         return new Line
         {
             X1 = outer.X,
@@ -185,7 +186,7 @@ public sealed class GaugeControl : UserControl
             Stroke = new SolidColorBrush(percent >= RedlineStart
                 ? RedlineColor
                 : Color.FromArgb(major ? (byte)0xCC : (byte)0x66, 0xC6, 0xD0, 0xDA)),
-            StrokeThickness = major ? 1.2 : 0.7,
+            StrokeThickness = (major ? 1.2 : 0.7) * Scale,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
         };
@@ -197,12 +198,12 @@ public sealed class GaugeControl : UserControl
         {
             Text = ((int)percent).ToString(),
             FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
-            FontSize = 4.5,
+            FontSize = 4.5 * Scale,
             FontWeight = FontWeights.SemiBold,
             Foreground = new SolidColorBrush(Color.FromRgb(0x8C, 0x98, 0xA6)),
         };
         text.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var at = PointFor(percent, CodexRadius + RingThickness / 2 + 9);
+        var at = PointFor(percent, CodexRadius + RingThickness / 2 + (9 * Scale));
         Canvas.SetLeft(text, at.X - text.DesiredSize.Width / 2);
         Canvas.SetTop(text, at.Y - text.DesiredSize.Height / 2);
         return text;
@@ -216,22 +217,22 @@ public sealed class GaugeControl : UserControl
             Points =
             [
                 new Point(Center, Center - length),   // tip
-                new Point(Center - 2.2, Center - 1),  // left shoulder
-                new Point(Center - 1.5, Center + 5),  // tail left
-                new Point(Center + 1.5, Center + 5),  // tail right
-                new Point(Center + 2.2, Center - 1),  // right shoulder
+                new Point(Center - (2.2 * Scale), Center - Scale),       // left shoulder
+                new Point(Center - (1.5 * Scale), Center + (5 * Scale)), // tail left
+                new Point(Center + (1.5 * Scale), Center + (5 * Scale)), // tail right
+                new Point(Center + (2.2 * Scale), Center - Scale),       // right shoulder
             ],
             Fill = new LinearGradientBrush(
                 Color.FromArgb(0xFF, color.R, color.G, color.B),
                 Color.FromArgb(0xB0, color.R, color.G, color.B),
                 90),
             Stroke = new SolidColorBrush(Color.FromArgb(0x40, 0x00, 0x00, 0x00)),
-            StrokeThickness = 0.4,
+            StrokeThickness = 0.4 * Scale,
             RenderTransform = new RotateTransform(AngleFor(percent), Center, Center),
         };
         polygon.Effect = new System.Windows.Media.Effects.DropShadowEffect
         {
-            BlurRadius = 3,
+            BlurRadius = 3 * Scale,
             ShadowDepth = 0,
             Opacity = 0.5,
             Color = color,
@@ -243,12 +244,12 @@ public sealed class GaugeControl : UserControl
     {
         Text = "--",
         FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
-        FontSize = 6.5,
+        FontSize = 6.5 * Scale,
         FontWeight = FontWeights.Bold,
         Foreground = new SolidColorBrush(color),
         VerticalAlignment = VerticalAlignment.Center,
-        Margin = new Thickness(2.5, 0, 0, 0),
-        MinWidth = 17,
+        Margin = new Thickness(2.5 * Scale, 0, 0, 0),
+        MinWidth = 17 * Scale,
     };
 
     private static UIElement BuildLegendRow(Color color, string name, TextBlock readout)
@@ -257,13 +258,13 @@ public sealed class GaugeControl : UserControl
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 0, 0, 1),
+            Margin = new Thickness(0, 0, 0, Scale),
         };
         row.Children.Add(new TextBlock
         {
             Text = name,
             FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
-            FontSize = 4.8,
+            FontSize = 4.8 * Scale,
             FontWeight = FontWeights.SemiBold,
             Foreground = new SolidColorBrush(Color.FromArgb(0xB0, color.R, color.G, color.B)),
             VerticalAlignment = VerticalAlignment.Center,

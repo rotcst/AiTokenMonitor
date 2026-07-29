@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:CodexWeeklyMonitor.Localization"
         Title="AI Token"
-        Width="100"
-        Height="100"
+        Width="150"
+        Height="150"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
@@ -16,7 +16,7 @@
         MouseLeftButtonDown="Window_MouseLeftButtonDown">
     <Grid ToolTip="{loc:Str gauge.restoreHint}">
         <!-- Orb face: a domed dark disc (radial vignette) under a thin bright bezel. -->
-        <Ellipse Margin="3">
+        <Ellipse Margin="4.5">
             <Ellipse.Fill>
                 <RadialGradientBrush GradientOrigin="0.5,0.32" Center="0.5,0.42" RadiusX="0.75" RadiusY="0.75">
                     <GradientStop Offset="0" Color="#FF232935" />
@@ -25,14 +25,14 @@
                 </RadialGradientBrush>
             </Ellipse.Fill>
             <Ellipse.Effect>
-                <DropShadowEffect BlurRadius="10"
+                <DropShadowEffect BlurRadius="15"
                                   Direction="270"
-                                  ShadowDepth="2"
+                                  ShadowDepth="3"
                                   Opacity="0.5"
                                   Color="#000000" />
             </Ellipse.Effect>
         </Ellipse>
-        <Ellipse Margin="3"
+        <Ellipse Margin="4.5"
                  Stroke="#2AFFFFFF"
                  StrokeThickness="1.2" />
         <ContentControl x:Name="GaugeHost"

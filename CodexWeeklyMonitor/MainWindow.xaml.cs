@@ -10,6 +10,8 @@ using CodexWeeklyMonitor.Models;
 using CodexWeeklyMonitor.Services;
 using Brush = System.Windows.Media.Brush;
 using Color = System.Windows.Media.Color;
+using ContextMenu = System.Windows.Controls.ContextMenu;
+using MenuItem = System.Windows.Controls.MenuItem;
 using ProgressBar = System.Windows.Controls.ProgressBar;
 using RadioButton = System.Windows.Controls.RadioButton;
 using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;

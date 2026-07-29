@@ -66,7 +66,7 @@ Codex 优先走官方 HTTP 接口；若本机存的令牌过期，则回退到�
 
 ## 从源码构建
 
-需要 .NET SDK（目标框架 net8.0-windows；仓库可用 .NET 8/9/10 SDK 构建）。
+需要稳定版 .NET 10 SDK（目标框架 `net10.0-windows`，由 `global.json` 固定）。
 
 ```powershell
 git clone https://github.com/rotcst/AiTokenMonitor.git

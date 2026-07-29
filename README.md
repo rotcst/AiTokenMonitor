@@ -81,7 +81,7 @@ instantly, no restart, and the choice is remembered in
 
 ## Build from source
 
-Requires the .NET SDK (net8.0-windows target; the repo builds with .NET 8/9/10 SDKs).
+Requires the stable .NET 10 SDK (`net10.0-windows`; pinned by `global.json`).
 
 ```powershell
 git clone https://github.com/rotcst/AiTokenMonitor.git

@@ -14,8 +14,10 @@ using CodexWeeklyMonitor.Models;
 using CodexWeeklyMonitor.Services;
 using Application = System.Windows.Application;
 using Button = System.Windows.Controls.Button;
+using ContextMenu = System.Windows.Controls.ContextMenu;
 using FontFamily = System.Windows.Media.FontFamily;
 using Forms = System.Windows.Forms;
+using MenuItem = System.Windows.Controls.MenuItem;
 using Orientation = System.Windows.Controls.Orientation;
 using RadioButton = System.Windows.Controls.RadioButton;
 using ScrollBar = System.Windows.Controls.Primitives.ScrollBar;
@@ -1228,10 +1230,10 @@ Run("仪表盘取用量优先 5 小时否则周额度", () =>
 RunSta("仪表盘控件渲染各种取值不抛异常", () =>
 {
     var gauge = new CodexWeeklyMonitor.Controls.GaugeControl();
-    Equal(92d, gauge.Width);
-    Equal(92d, gauge.Height);
-    Equal(92d, CodexWeeklyMonitor.Controls.GaugeControl.ControlSize);
-    if (CodexWeeklyMonitor.Controls.GaugeControl.ReadoutTop <= gauge.Height / 2 + 12)
+    Equal(138d, gauge.Width);
+    Equal(138d, gauge.Height);
+    Equal(138d, CodexWeeklyMonitor.Controls.GaugeControl.ControlSize);
+    if (CodexWeeklyMonitor.Controls.GaugeControl.ReadoutTop <= gauge.Height / 2 + 18)
     {
         throw new Exception("仪表盘数字读数没有移入下方留白区。");
     }
@@ -1243,7 +1245,7 @@ RunSta("仪表盘控件渲染各种取值不抛异常", () =>
     gauge.Arrange(new System.Windows.Rect(0, 0, 200, 200));
 });
 
-RunSta("仪表盘悬浮窗实际尺寸为 100×100", () =>
+RunSta("仪表盘悬浮窗实际尺寸为 150×150", () =>
 {
     var gaugeWindow = new GaugeWindow();
     try
@@ -1251,10 +1253,10 @@ RunSta("仪表盘悬浮窗实际尺寸为 100×100", () =>
         gaugeWindow.SetValues(13, 65);
         gaugeWindow.Show();
         gaugeWindow.UpdateLayout();
-        Equal(100d, gaugeWindow.Width);
-        Equal(100d, gaugeWindow.Height);
-        Equal(100d, gaugeWindow.ActualWidth);
-        Equal(100d, gaugeWindow.ActualHeight);
+        Equal(150d, gaugeWindow.Width);
+        Equal(150d, gaugeWindow.Height);
+        Equal(150d, gaugeWindow.ActualWidth);
+        Equal(150d, gaugeWindow.ActualHeight);
     }
     finally
     {
