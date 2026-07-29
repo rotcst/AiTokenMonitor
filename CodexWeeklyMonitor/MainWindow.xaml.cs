@@ -187,6 +187,7 @@ public partial class MainWindow : Window
     private async Task RefreshUsageAsync(bool userInitiated = false)
     {
         _claudeMonitor.Refresh(userInitiated);
+        _localTokenMonitor.Refresh();
         if (_refreshInProgress || _isClosing)
         {
             return;

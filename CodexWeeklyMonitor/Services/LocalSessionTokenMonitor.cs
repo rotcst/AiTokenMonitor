@@ -11,9 +11,12 @@ public sealed class LocalSessionTokenMonitor : IDisposable
 {
     private const int MaximumTailBytes = 512 * 1024;
     private static readonly TimeSpan DebounceInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan DirectoryRecoveryInterval = TimeSpan.FromSeconds(2);
 
     private readonly ConcurrentDictionary<string, byte> _pendingPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _sessionGroupKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, FileState> _observedFiles = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, long> _dailyBaselines = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _sessionsDirectory;
     private readonly string _archivedSessionsDirectory;
     private readonly TodayTokenAccumulator _accumulator = new();
@@ -21,7 +24,9 @@ public sealed class LocalSessionTokenMonitor : IDisposable
     private Timer? _timer;
     private TodayTokenUsage? _lastPublishedUsage;
     private DateOnly _trackedDate;
+    private DateTimeOffset _nextDirectoryRecoveryAt;
     private int _processing;
+    private int _fullRecoveryRequested;
     private bool _disposed;
 
     public LocalSessionTokenMonitor(string? codexHome = null)
@@ -45,7 +50,7 @@ public sealed class LocalSessionTokenMonitor : IDisposable
     public void Start()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_watchers.Count > 0)
+        if (_timer is not null)
         {
             return;
         }
@@ -53,18 +58,42 @@ public sealed class LocalSessionTokenMonitor : IDisposable
         _trackedDate = DateOnly.FromDateTime(DateTime.Now);
         _accumulator.Reset(_trackedDate);
 
-        QueueSessionFiles(_trackedDate);
-        QueueArchivedSessionFiles(_trackedDate);
+        QueueRecentlyModifiedFiles(_trackedDate);
+        QueueCurrentDateFiles(_trackedDate);
+        EnsureWatchers();
 
-        var watcherStarted = false;
-        watcherStarted |= TryStartWatcher(_sessionsDirectory, includeSubdirectories: true);
-        watcherStarted |= TryStartWatcher(_archivedSessionsDirectory, includeSubdirectories: false);
-        if (!watcherStarted && _pendingPaths.IsEmpty)
+        _nextDirectoryRecoveryAt = DateTimeOffset.MinValue;
+        _timer = new Timer(ProcessPendingFiles, null, TimeSpan.Zero, DebounceInterval);
+    }
+
+    public void Refresh()
+    {
+        if (_disposed)
         {
             return;
         }
 
-        _timer = new Timer(ProcessPendingFiles, null, TimeSpan.Zero, DebounceInterval);
+        Interlocked.Exchange(ref _fullRecoveryRequested, 1);
+        _timer?.Change(TimeSpan.Zero, DebounceInterval);
+    }
+
+    private void EnsureWatchers()
+    {
+        if (!_watchers.Any(watcher => string.Equals(
+                watcher.Path,
+                _sessionsDirectory,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            TryStartWatcher(_sessionsDirectory, includeSubdirectories: true);
+        }
+
+        if (!_watchers.Any(watcher => string.Equals(
+                watcher.Path,
+                _archivedSessionsDirectory,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            TryStartWatcher(_archivedSessionsDirectory, includeSubdirectories: false);
+        }
     }
 
     private bool TryStartWatcher(string directory, bool includeSubdirectories)
@@ -94,6 +123,7 @@ public sealed class LocalSessionTokenMonitor : IDisposable
         watcher.Changed += Watcher_Changed;
         watcher.Created += Watcher_Changed;
         watcher.Renamed += Watcher_Renamed;
+        watcher.Error += Watcher_Error;
         watcher.EnableRaisingEvents = true;
         _watchers.Add(watcher);
         return true;
@@ -111,7 +141,7 @@ public sealed class LocalSessionTokenMonitor : IDisposable
         {
             foreach (var path in Directory.EnumerateFiles(directory, "*.jsonl", SearchOption.TopDirectoryOnly))
             {
-                _pendingPaths.TryAdd(path, 0);
+                QueueIfChanged(path);
             }
         }
         catch (IOException)
@@ -140,7 +170,7 @@ public sealed class LocalSessionTokenMonitor : IDisposable
             {
                 if (IsArchivedSessionFileForDate(path, date))
                 {
-                    _pendingPaths.TryAdd(path, 0);
+                    QueueIfChanged(path);
                 }
             }
         }
@@ -151,6 +181,64 @@ public sealed class LocalSessionTokenMonitor : IDisposable
         catch (UnauthorizedAccessException)
         {
             // Local session monitoring is optional; account usage remains available.
+        }
+    }
+
+    private void QueueCurrentDateFiles(DateOnly date)
+    {
+        QueueSessionFiles(date);
+        QueueArchivedSessionFiles(date);
+    }
+
+    private void QueueRecentlyModifiedFiles(DateOnly date)
+    {
+        var localMidnight = date.ToDateTime(TimeOnly.MinValue);
+        QueueRecentlyModifiedFiles(_sessionsDirectory, SearchOption.AllDirectories, localMidnight);
+        QueueRecentlyModifiedFiles(_archivedSessionsDirectory, SearchOption.TopDirectoryOnly, localMidnight);
+    }
+
+    private void QueueRecentlyModifiedFiles(string directory, SearchOption searchOption, DateTime localMidnight)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(directory, "*.jsonl", searchOption))
+            {
+                if (File.GetLastWriteTime(path) >= localMidnight)
+                {
+                    QueueIfChanged(path);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A recovery scan is best effort; watcher events and the next refresh can fill gaps.
+        }
+    }
+
+    private void QueueIfChanged(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists)
+            {
+                return;
+            }
+
+            var current = new FileState(info.Length, info.LastWriteTimeUtc);
+            if (!_observedFiles.TryGetValue(path, out var observed) || observed != current)
+            {
+                _pendingPaths.TryAdd(path, 0);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _pendingPaths.TryAdd(path, 0);
         }
     }
 
@@ -165,6 +253,16 @@ public sealed class LocalSessionTokenMonitor : IDisposable
     private void Watcher_Renamed(object sender, RenamedEventArgs e)
     {
         Watcher_Changed(sender, e);
+    }
+
+    private void Watcher_Error(object sender, ErrorEventArgs e)
+    {
+        if (!_disposed)
+        {
+            // FileSystemWatcher reports internal-buffer overflow here. A full modified-today scan
+            // repairs any events that were dropped while Codex was writing many parallel sessions.
+            Interlocked.Exchange(ref _fullRecoveryRequested, 1);
+        }
     }
 
     private void ProcessPendingFiles(object? state)
@@ -183,27 +281,55 @@ public sealed class LocalSessionTokenMonitor : IDisposable
                 _accumulator.Reset(today);
                 _lastPublishedUsage = null;
                 _sessionGroupKeys.Clear();
-                QueueSessionFiles(today);
-                QueueArchivedSessionFiles(today);
+                _observedFiles.Clear();
+                _dailyBaselines.Clear();
+                QueueRecentlyModifiedFiles(today);
+                QueueCurrentDateFiles(today);
+            }
+
+            EnsureWatchers();
+            var now = DateTimeOffset.Now;
+            if (now >= _nextDirectoryRecoveryAt)
+            {
+                // Metadata-only rescan of today's directories closes the small race between a
+                // partial JSONL write and its final FileSystemWatcher notification.
+                QueueCurrentDateFiles(today);
+                _nextDirectoryRecoveryAt = now + DirectoryRecoveryInterval;
+            }
+
+            if (Interlocked.Exchange(ref _fullRecoveryRequested, 0) != 0)
+            {
+                QueueRecentlyModifiedFiles(today);
             }
 
             var paths = _pendingPaths.Keys.ToArray();
             foreach (var path in paths)
             {
                 _pendingPaths.TryRemove(path, out _);
-                if (!IsSessionFileForDate(path, today))
+                if (!TryGetFileState(path, out var readState))
                 {
+                    _observedFiles.TryRemove(path, out _);
                     continue;
                 }
 
-                var usage = TryReadLatestUsage(path);
-                if (usage is null)
+                if (!TryReadLatestUsage(path, out var usage))
+                {
+                    _pendingPaths.TryAdd(path, 0);
+                    continue;
+                }
+
+                // Remember the state captured before the read. If Codex appended while the tail
+                // was being parsed, the next metadata scan will see a different state and retry.
+                _observedFiles[path] = readState;
+                if (usage is null ||
+                    DateOnly.FromDateTime(usage.ObservedAt.LocalDateTime) != today ||
+                    !TryConvertToDailyUsage(path, today, usage, out var dailyUsage))
                 {
                     continue;
                 }
 
                 var sessionGroupKey = _sessionGroupKeys.GetOrAdd(path, ResolveSessionGroupKey);
-                _accumulator.Update(sessionGroupKey, usage);
+                _accumulator.Update(sessionGroupKey, dailyUsage);
             }
 
             var aggregate = _accumulator.Snapshot();
@@ -272,6 +398,208 @@ public sealed class LocalSessionTokenMonitor : IDisposable
             date.ToString("yyyy", CultureInfo.InvariantCulture),
             date.ToString("MM", CultureInfo.InvariantCulture),
             date.ToString("dd", CultureInfo.InvariantCulture));
+    }
+
+    private static bool TryGetFileState(string path, out FileState state)
+    {
+        state = default;
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists)
+            {
+                return false;
+            }
+
+            state = new FileState(info.Length, info.LastWriteTimeUtc);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private bool TryConvertToDailyUsage(
+        string path,
+        DateOnly date,
+        LiveTokenUsage latest,
+        out LiveTokenUsage dailyUsage)
+    {
+        dailyUsage = latest;
+        if (!_dailyBaselines.TryGetValue(path, out var baseline))
+        {
+            if (!TryReadDailyBaseline(path, date, out baseline))
+            {
+                return false;
+            }
+
+            _dailyBaselines[path] = baseline;
+        }
+
+        var dailyTotal = Math.Max(0, latest.TotalTokens - baseline);
+        dailyUsage = latest with { TotalTokens = dailyTotal };
+        return true;
+    }
+
+    private bool TryReadDailyBaseline(string path, DateOnly date, out long baseline)
+    {
+        baseline = 0;
+        try
+        {
+            using var stream = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            if (stream.Length == 0)
+            {
+                return false;
+            }
+
+            var startOffset = IsSessionFileForDate(path, date)
+                ? 0
+                : FindDateSearchOffset(stream, StartOfLocalDateUtc(date));
+            stream.Seek(startOffset, SeekOrigin.Begin);
+            using var reader = new StreamReader(
+                stream,
+                Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: startOffset == 0,
+                bufferSize: 16 * 1024,
+                leaveOpen: false);
+            if (startOffset > 0)
+            {
+                // The search offset can land in the middle of a JSONL record.
+                reader.ReadLine();
+            }
+
+            while (reader.ReadLine() is { } line)
+            {
+                if (!TryParseUsageLine(line, File.GetLastWriteTimeUtc(path), out var usage))
+                {
+                    continue;
+                }
+
+                var observedDate = DateOnly.FromDateTime(usage.ObservedAt.LocalDateTime);
+                if (observedDate < date)
+                {
+                    continue;
+                }
+
+                if (observedDate > date)
+                {
+                    return false;
+                }
+
+                // App-server's total_token_usage is cumulative. Removing the first event's
+                // last_token_usage gives the exact carry-in from before this local day, including
+                // resumed sessions and forked transcripts that already contain prior context.
+                baseline = Math.Max(0, usage.TotalTokens - usage.LastTurnTokens);
+                return true;
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    private static DateTimeOffset StartOfLocalDateUtc(DateOnly date)
+    {
+        var local = DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local)).ToUniversalTime();
+    }
+
+    private static long FindDateSearchOffset(FileStream stream, DateTimeOffset targetUtc)
+    {
+        const long searchPadding = 2L * 1024 * 1024;
+        var low = 0L;
+        var high = stream.Length;
+        while (high - low > MaximumTailBytes)
+        {
+            var middle = low + ((high - low) / 2);
+            if (!TryReadTimestampAtOrAfter(stream, middle, out var timestamp))
+            {
+                high = middle;
+                continue;
+            }
+
+            if (timestamp < targetUtc)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        // Back up beyond the remaining binary-search window so the first token event of the day
+        // cannot be skipped even when the probe landed inside a large response_item record.
+        return Math.Max(0, low - searchPadding);
+    }
+
+    private static bool TryReadTimestampAtOrAfter(
+        FileStream stream,
+        long offset,
+        out DateTimeOffset timestamp)
+    {
+        timestamp = default;
+        stream.Seek(offset, SeekOrigin.Begin);
+        if (offset > 0)
+        {
+            var foundLineEnd = false;
+            var scanBuffer = new byte[16 * 1024];
+            while (stream.Position < stream.Length)
+            {
+                var blockStart = stream.Position;
+                var read = stream.Read(scanBuffer, 0, scanBuffer.Length);
+                var lineEnd = Array.IndexOf(scanBuffer, (byte)'\n', 0, read);
+                if (lineEnd >= 0)
+                {
+                    stream.Position = blockStart + lineEnd + 1;
+                    foundLineEnd = true;
+                    break;
+                }
+
+                if (read == 0)
+                {
+                    break;
+                }
+            }
+
+            if (!foundLineEnd)
+            {
+                return false;
+            }
+        }
+
+        var prefixBuffer = new byte[512];
+        var prefixLength = stream.Read(prefixBuffer, 0, prefixBuffer.Length);
+        if (prefixLength == 0)
+        {
+            return false;
+        }
+
+        var prefix = Encoding.UTF8.GetString(prefixBuffer, 0, prefixLength);
+        const string marker = "\"timestamp\":\"";
+        var markerIndex = prefix.IndexOf(marker, StringComparison.Ordinal);
+        if (markerIndex < 0)
+        {
+            return false;
+        }
+
+        var valueStart = markerIndex + marker.Length;
+        var valueEnd = prefix.IndexOf('"', valueStart);
+        return valueEnd > valueStart &&
+               DateTimeOffset.TryParse(
+                   prefix[valueStart..valueEnd],
+                   CultureInfo.InvariantCulture,
+                   DateTimeStyles.AssumeUniversal,
+                   out timestamp);
     }
 
     private static string ResolveSessionGroupKey(string path)
@@ -357,8 +685,9 @@ public sealed class LocalSessionTokenMonitor : IDisposable
             : null;
     }
 
-    private static LiveTokenUsage? TryReadLatestUsage(string path)
+    private static bool TryReadLatestUsage(string path, out LiveTokenUsage? usage)
     {
+        usage = null;
         try
         {
             using var stream = new FileStream(
@@ -368,7 +697,7 @@ public sealed class LocalSessionTokenMonitor : IDisposable
                 FileShare.ReadWrite | FileShare.Delete);
             if (stream.Length == 0)
             {
-                return null;
+                return true;
             }
 
             var bytesToRead = (int)Math.Min(stream.Length, MaximumTailBytes);
@@ -387,12 +716,13 @@ public sealed class LocalSessionTokenMonitor : IDisposable
             }
 
             var text = Encoding.UTF8.GetString(buffer, 0, read);
-            return ParseLatestFromText(text, File.GetLastWriteTimeUtc(path));
+            usage = ParseLatestFromText(text, File.GetLastWriteTimeUtc(path));
+            return true;
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or JsonException)
         {
-            return null;
+            return false;
         }
     }
 
@@ -402,61 +732,75 @@ public sealed class LocalSessionTokenMonitor : IDisposable
         for (var index = lines.Length - 1; index >= 0; index--)
         {
             var line = lines[index].TrimEnd('\r');
-            if (!line.Contains("token_count", StringComparison.Ordinal) &&
-                !line.Contains("total_token_usage", StringComparison.Ordinal))
+            if (TryParseUsageLine(line, fallbackTimestamp, out var usage))
             {
-                continue;
-            }
-
-            try
-            {
-                using var document = JsonDocument.Parse(line);
-                var root = document.RootElement;
-                if (root.ValueKind != JsonValueKind.Object ||
-                    !root.TryGetProperty("payload", out var payload) ||
-                    !payload.TryGetProperty("info", out var info) ||
-                    info.ValueKind != JsonValueKind.Object ||
-                    !TryGetUsage(info, "total_token_usage", out var total) ||
-                    !TryGetUsage(info, "last_token_usage", out var last))
-                {
-                    continue;
-                }
-
-                var observedAt = fallbackTimestamp;
-                if (root.TryGetProperty("timestamp", out var timestampElement) &&
-                    DateTimeOffset.TryParse(
-                        timestampElement.GetString(),
-                        CultureInfo.InvariantCulture,
-                        DateTimeStyles.AssumeUniversal,
-                        out var parsedTimestamp))
-                {
-                    observedAt = parsedTimestamp;
-                }
-
-                long? contextWindow = null;
-                if (info.TryGetProperty("model_context_window", out var contextElement) &&
-                    contextElement.TryGetInt64(out var parsedContextWindow))
-                {
-                    contextWindow = parsedContextWindow;
-                }
-
-                return new LiveTokenUsage(
-                    TotalTokens: total.Total,
-                    LastTurnTokens: last.Total,
-                    InputTokens: last.Input,
-                    CachedInputTokens: last.CachedInput,
-                    OutputTokens: last.Output,
-                    ReasoningOutputTokens: last.Reasoning,
-                    ModelContextWindow: contextWindow,
-                    ObservedAt: observedAt);
-            }
-            catch (Exception exception) when (exception is JsonException or InvalidOperationException)
-            {
-                // The first line of a tail read can be partial. Continue to an earlier event.
+                return usage;
             }
         }
 
         return null;
+    }
+
+    private static bool TryParseUsageLine(
+        string line,
+        DateTimeOffset fallbackTimestamp,
+        out LiveTokenUsage usage)
+    {
+        usage = default!;
+        if (!line.Contains("token_count", StringComparison.Ordinal) &&
+            !line.Contains("total_token_usage", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(line);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("payload", out var payload) ||
+                !payload.TryGetProperty("info", out var info) ||
+                info.ValueKind != JsonValueKind.Object ||
+                !TryGetUsage(info, "total_token_usage", out var total) ||
+                !TryGetUsage(info, "last_token_usage", out var last))
+            {
+                return false;
+            }
+
+            var observedAt = fallbackTimestamp;
+            if (root.TryGetProperty("timestamp", out var timestampElement) &&
+                DateTimeOffset.TryParse(
+                    timestampElement.GetString(),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal,
+                    out var parsedTimestamp))
+            {
+                observedAt = parsedTimestamp;
+            }
+
+            long? contextWindow = null;
+            if (info.TryGetProperty("model_context_window", out var contextElement) &&
+                contextElement.TryGetInt64(out var parsedContextWindow))
+            {
+                contextWindow = parsedContextWindow;
+            }
+
+            usage = new LiveTokenUsage(
+                TotalTokens: total.Total,
+                LastTurnTokens: last.Total,
+                InputTokens: last.Input,
+                CachedInputTokens: last.CachedInput,
+                OutputTokens: last.Output,
+                ReasoningOutputTokens: last.Reasoning,
+                ModelContextWindow: contextWindow,
+                ObservedAt: observedAt);
+            return true;
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+        {
+            // A tail read can start or end in the middle of a JSONL record.
+            return false;
+        }
     }
 
     private static bool TryGetUsage(JsonElement info, string name, out UsageBreakdown usage)
@@ -497,12 +841,15 @@ public sealed class LocalSessionTokenMonitor : IDisposable
             watcher.Changed -= Watcher_Changed;
             watcher.Created -= Watcher_Changed;
             watcher.Renamed -= Watcher_Renamed;
+            watcher.Error -= Watcher_Error;
             watcher.Dispose();
         }
 
         _timer?.Dispose();
         _pendingPaths.Clear();
         _sessionGroupKeys.Clear();
+        _observedFiles.Clear();
+        _dailyBaselines.Clear();
         _watchers.Clear();
     }
 
@@ -517,6 +864,8 @@ public sealed class LocalSessionTokenMonitor : IDisposable
         long CachedInput,
         long Output,
         long Reasoning);
+
+    private readonly record struct FileState(long Length, DateTime LastWriteTimeUtc);
 
     internal sealed class TodayTokenAccumulator
     {

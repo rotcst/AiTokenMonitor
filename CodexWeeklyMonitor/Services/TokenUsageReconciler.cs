@@ -39,10 +39,19 @@ internal static class TokenUsageReconciler
             .OrderBy(item => item.Date)
             .ToArray();
         var peakDailyTokens = Math.Max(usage.PeakDailyTokens ?? 0, effectiveTodayTokens);
+        var localDelta = effectiveTodayTokens - serverTodayTokens;
+        long? lifetimeTokens = usage.LifetimeTokens;
+        if (lifetimeTokens is { } lifetime)
+        {
+            lifetimeTokens = lifetime > long.MaxValue - localDelta
+                ? long.MaxValue
+                : lifetime + localDelta;
+        }
 
         return new ReconciledTokenUsage(
             usage with
             {
+                LifetimeTokens = lifetimeTokens,
                 PeakDailyTokens = peakDailyTokens,
                 DailyUsage = dailyUsage,
             },

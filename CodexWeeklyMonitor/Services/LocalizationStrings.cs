@@ -73,7 +73,7 @@ internal static class Strings
         ["status.readingCodexToken"] = ["正在读取 Codex Token", "Reading Codex tokens", "Codex 토큰 읽는 중"],
         ["status.errWithLocal"] = ["{0} · 已显示本机 Token", "{0} · showing local tokens", "{0} · 로컬 토큰 표시 중"],
         ["status.codexNoHistory"] = ["当前 Codex 版本未提供 Token 历史", "This Codex version has no token history", "이 Codex 버전은 토큰 기록을 제공하지 않음"],
-        ["status.localRealtime"] = ["今日采用本机实时 · 历史来自服务端", "Today live · history from server", "오늘 실시간 · 기록은 서버"],
+        ["status.localRealtime"] = ["今日本机实时估算 · 历史来自官方账本", "Today estimated live locally · official history", "오늘 로컬 실시간 추정 · 공식 기록"],
         ["status.historyDelay"] = ["历史截至 {0} · 服务端延迟 {1} 天", "History to {0} · server {1}d behind", "기록 {0}까지 · 서버 {1}일 지연"],
         ["status.tokenRefresh"] = ["Token 每 60 秒刷新", "Tokens refresh every 60s", "토큰 60초마다 새로고침"],
         ["status.tokenUnavailable"] = ["Token 历史暂不可用", "Token history unavailable", "토큰 기록 사용 불가"],

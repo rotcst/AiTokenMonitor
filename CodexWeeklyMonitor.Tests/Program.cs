@@ -22,6 +22,7 @@ using ScrollBar = System.Windows.Controls.Primitives.ScrollBar;
 using ToolTip = System.Windows.Controls.ToolTip;
 
 var failed = 0;
+using var staTestRunner = new StaTestRunner();
 
 // Pin the UI language so string assertions are deterministic regardless of the OS locale or a
 // previously persisted choice.
@@ -284,6 +285,122 @@ Run("Codex 本机统计同时读取 CLI 当日会话和桌面端归档会话", (
     }
 });
 
+Run("Codex 本机统计会补扫启动后新建的会话目录", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), "AiTokenMonitorTests", Guid.NewGuid().ToString("N"));
+    var codexHome = Path.Combine(root, ".codex");
+    var today = DateOnly.FromDateTime(DateTime.Now);
+    var sessionDirectory = Path.Combine(
+        codexHome,
+        "sessions",
+        today.ToString("yyyy", CultureInfo.InvariantCulture),
+        today.ToString("MM", CultureInfo.InvariantCulture),
+        today.ToString("dd", CultureInfo.InvariantCulture));
+
+    try
+    {
+        using var signal = new ManualResetEventSlim();
+        TodayTokenUsage? observed = null;
+        using var monitor = new LocalSessionTokenMonitor(codexHome);
+        monitor.UsageUpdated += usage =>
+        {
+            observed = usage;
+            if (usage.Tokens == 4_200)
+            {
+                signal.Set();
+            }
+        };
+        monitor.Start();
+
+        Directory.CreateDirectory(sessionDirectory);
+        File.WriteAllText(
+            Path.Combine(sessionDirectory, $"rollout-{today:yyyy-MM-dd}T11-00-00-late-session.jsonl"),
+            CreateCodexRollout("late-session", null, "cli", 4_200));
+
+        if (!signal.Wait(TimeSpan.FromSeconds(10)))
+        {
+            throw new Exception($"Codex 本机统计没有补扫到启动后创建的会话，实际 {observed?.Tokens}。");
+        }
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+});
+
+Run("Codex 跨午夜会话只计入当天新增 Token", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), "AiTokenMonitorTests", Guid.NewGuid().ToString("N"));
+    var codexHome = Path.Combine(root, ".codex");
+    var today = DateOnly.FromDateTime(DateTime.Now);
+    var yesterday = today.AddDays(-1);
+    var sessionDirectory = Path.Combine(
+        codexHome,
+        "sessions",
+        yesterday.ToString("yyyy", CultureInfo.InvariantCulture),
+        yesterday.ToString("MM", CultureInfo.InvariantCulture),
+        yesterday.ToString("dd", CultureInfo.InvariantCulture));
+    Directory.CreateDirectory(sessionDirectory);
+
+    try
+    {
+        var yesterdayTime = new DateTimeOffset(
+            yesterday.ToDateTime(new TimeOnly(23, 50)),
+            TimeZoneInfo.Local.GetUtcOffset(yesterday.ToDateTime(new TimeOnly(23, 50))));
+        var todayTime = new DateTimeOffset(
+            today.ToDateTime(new TimeOnly(0, 10)),
+            TimeZoneInfo.Local.GetUtcOffset(today.ToDateTime(new TimeOnly(0, 10))));
+        var meta = JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["timestamp"] = yesterdayTime.ToUniversalTime().ToString("O"),
+            ["type"] = "session_meta",
+            ["payload"] = new Dictionary<string, object?>
+            {
+                ["session_id"] = "overnight-session",
+                ["id"] = "overnight-session",
+                ["source"] = "cli",
+            },
+        });
+        var path = Path.Combine(
+            sessionDirectory,
+            $"rollout-{yesterday:yyyy-MM-dd}T23-50-00-overnight-session.jsonl");
+        File.WriteAllText(
+            path,
+            meta + Environment.NewLine +
+            CreateCodexTokenEvent(yesterdayTime, 10_000, 10_000) + Environment.NewLine +
+            CreateCodexTokenEvent(todayTime, 10_600, 600) + Environment.NewLine);
+        File.SetLastWriteTime(path, DateTime.Now);
+
+        using var signal = new ManualResetEventSlim();
+        TodayTokenUsage? observed = null;
+        using var monitor = new LocalSessionTokenMonitor(codexHome);
+        monitor.UsageUpdated += usage =>
+        {
+            observed = usage;
+            if (usage.Tokens == 600)
+            {
+                signal.Set();
+            }
+        };
+        monitor.Start();
+
+        if (!signal.Wait(TimeSpan.FromSeconds(10)))
+        {
+            throw new Exception($"跨午夜会话应只计入 600 Token，实际 {observed?.Tokens}。");
+        }
+    }
+    finally
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+});
+
 Run("今日 Token 跨会话单调累加并在换日后归零", () =>
 {
     var date = new DateOnly(2026, 7, 22);
@@ -334,6 +451,7 @@ Run("当天服务端历史与本机实时用量采用较新较大的值", () =>
     Equal(1_600_000_000L, localAhead.EffectiveTodayTokens);
     Equal(true, localAhead.LocalRealtimeApplied);
     Equal(1_600_000_000L, localAhead.Usage.LatestDay!.Tokens);
+    Equal<long?>(31_800_000_000L, localAhead.Usage.LifetimeTokens);
     Equal<long?>(3_600_000_000L, localAhead.Usage.PeakDailyTokens);
 
     var serverAheadUsage = serverUsage with
@@ -1109,16 +1227,39 @@ Run("仪表盘取用量优先 5 小时否则周额度", () =>
 
 RunSta("仪表盘控件渲染各种取值不抛异常", () =>
 {
-    // GaugeControl is an HWND-free UserControl, so it is safe to build on a throwaway STA thread.
-    // (GaugeWindow uses a layered HwndSource whose teardown races process exit, so it is exercised
-    // manually rather than here.)
     var gauge = new CodexWeeklyMonitor.Controls.GaugeControl();
+    Equal(92d, gauge.Width);
+    Equal(92d, gauge.Height);
+    Equal(92d, CodexWeeklyMonitor.Controls.GaugeControl.ControlSize);
+    if (CodexWeeklyMonitor.Controls.GaugeControl.ReadoutTop <= gauge.Height / 2 + 12)
+    {
+        throw new Exception("仪表盘数字读数没有移入下方留白区。");
+    }
     gauge.Update(97, 68);
     gauge.Update(null, null);
     gauge.Update(0, 100);
     gauge.Update(150, -5); // clamped, must not throw
     gauge.Measure(new System.Windows.Size(200, 200));
     gauge.Arrange(new System.Windows.Rect(0, 0, 200, 200));
+});
+
+RunSta("仪表盘悬浮窗实际尺寸为 100×100", () =>
+{
+    var gaugeWindow = new GaugeWindow();
+    try
+    {
+        gaugeWindow.SetValues(13, 65);
+        gaugeWindow.Show();
+        gaugeWindow.UpdateLayout();
+        Equal(100d, gaugeWindow.Width);
+        Equal(100d, gaugeWindow.Height);
+        Equal(100d, gaugeWindow.ActualWidth);
+        Equal(100d, gaugeWindow.ActualHeight);
+    }
+    finally
+    {
+        gaugeWindow.Close();
+    }
 });
 
 Run("界面语言可切换且默认跟随系统", () =>
@@ -1734,21 +1875,7 @@ void Run(string name, Action test)
 
 void RunSta(string name, Action test)
 {
-    Exception? failure = null;
-    var thread = new Thread(() =>
-    {
-        try
-        {
-            test();
-        }
-        catch (Exception exception)
-        {
-            failure = exception;
-        }
-    });
-    thread.SetApartmentState(ApartmentState.STA);
-    thread.Start();
-    thread.Join();
+    var failure = staTestRunner.Execute(test);
 
     if (failure is null)
     {
@@ -1804,31 +1931,37 @@ static string CreateCodexRollout(
         ["type"] = "session_meta",
         ["payload"] = payload,
     });
-    var usage = new Dictionary<string, long>
+    return meta + Environment.NewLine +
+           CreateCodexTokenEvent(DateTimeOffset.Now, totalTokens, totalTokens) +
+           Environment.NewLine;
+}
+
+static string CreateCodexTokenEvent(DateTimeOffset timestamp, long totalTokens, long lastTurnTokens)
+{
+    static Dictionary<string, long> Usage(long tokens) => new()
     {
-        ["input_tokens"] = totalTokens,
+        ["input_tokens"] = tokens,
         ["cached_input_tokens"] = 0,
         ["output_tokens"] = 0,
         ["reasoning_output_tokens"] = 0,
-        ["total_tokens"] = totalTokens,
+        ["total_tokens"] = tokens,
     };
-    var tokenCount = JsonSerializer.Serialize(new Dictionary<string, object?>
+
+    return JsonSerializer.Serialize(new Dictionary<string, object?>
     {
-        ["timestamp"] = DateTimeOffset.Now.ToUniversalTime().ToString("O"),
+        ["timestamp"] = timestamp.ToUniversalTime().ToString("O"),
         ["type"] = "event_msg",
         ["payload"] = new Dictionary<string, object?>
         {
             ["type"] = "token_count",
             ["info"] = new Dictionary<string, object?>
             {
-                ["total_token_usage"] = usage,
-                ["last_token_usage"] = usage,
+                ["total_token_usage"] = Usage(totalTokens),
+                ["last_token_usage"] = Usage(lastTurnTokens),
                 ["model_context_window"] = 200_000,
             },
         },
     });
-
-    return meta + Environment.NewLine + tokenCount + Environment.NewLine;
 }
 
 static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent)
@@ -1895,5 +2028,57 @@ sealed class FakeTrayIconService : ITrayIconService
     {
         Visible = false;
         Disposed = true;
+    }
+}
+
+sealed class StaTestRunner : IDisposable
+{
+    private readonly ManualResetEventSlim _ready = new();
+    private readonly Thread _thread;
+    private Dispatcher? _dispatcher;
+
+    public StaTestRunner()
+    {
+        _thread = new Thread(() =>
+        {
+            _dispatcher = Dispatcher.CurrentDispatcher;
+            _ready.Set();
+            Dispatcher.Run();
+        })
+        {
+            IsBackground = true,
+            Name = "AiTokenMonitor UI tests",
+        };
+        _thread.SetApartmentState(ApartmentState.STA);
+        _thread.Start();
+        _ready.Wait();
+    }
+
+    public Exception? Execute(Action action)
+    {
+        Exception? failure = null;
+        _dispatcher!.Invoke(() =>
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        return failure;
+    }
+
+    public void Dispose()
+    {
+        if (_dispatcher is not null && !_dispatcher.HasShutdownStarted)
+        {
+            _dispatcher.InvokeShutdown();
+        }
+
+        _thread.Join(TimeSpan.FromSeconds(5));
+        _ready.Dispose();
     }
 }
