@@ -1290,38 +1290,40 @@ Run("重置时间显示本地月日和时分", () =>
     Equal("7月29日 14:30 重置", MainWindow.FormatResetTime(resetAt));
 });
 
-Run("仪表盘取用量优先 5 小时否则周额度", () =>
+Run("仪表盘水位取剩余额度,5 小时优先否则周额度", () =>
 {
     var fiveHour = new RateLimitWindow(44, DateTimeOffset.Now, 300);
     var weekly = new RateLimitWindow(89, DateTimeOffset.Now, 10_080);
 
-    // 5-hour wins when present.
+    // The reflected window: 5-hour wins when present, else weekly (Codex's current shape).
     Equal<int?>(44, MainWindow.GaugeUsedPercent(fiveHour, weekly));
-    // Falls back to weekly when there is no 5-hour window (Codex's current shape).
     Equal<int?>(89, MainWindow.GaugeUsedPercent(null, weekly));
-    // Nothing at all -> null (needle parks / shows --).
     Equal<int?>(null, MainWindow.GaugeUsedPercent(null, null));
+
+    // Water line = remaining, i.e. 100 - used, so a full tank reads 100% and a dry tank 0%.
+    Equal<int?>(56, MainWindow.GaugeRemainingPercent(fiveHour, weekly));
+    Equal<int?>(11, MainWindow.GaugeRemainingPercent(null, weekly));
+    Equal<int?>(null, MainWindow.GaugeRemainingPercent(null, null));
+    // Fully consumed -> empty tank; untouched -> full tank.
+    Equal<int?>(0, MainWindow.GaugeRemainingPercent(new RateLimitWindow(100, DateTimeOffset.Now, 300), null));
+    Equal<int?>(100, MainWindow.GaugeRemainingPercent(new RateLimitWindow(0, DateTimeOffset.Now, 300), null));
 });
 
-RunSta("仪表盘控件渲染各种取值不抛异常", () =>
+RunSta("液面球渲染各种剩余取值不抛异常", () =>
 {
     var gauge = new CodexWeeklyMonitor.Controls.GaugeControl();
-    Equal(138d, gauge.Width);
-    Equal(138d, gauge.Height);
-    Equal(138d, CodexWeeklyMonitor.Controls.GaugeControl.ControlSize);
-    if (CodexWeeklyMonitor.Controls.GaugeControl.ReadoutTop <= gauge.Height / 2 + 18)
-    {
-        throw new Exception("仪表盘数字读数没有移入下方留白区。");
-    }
-    gauge.Update(97, 68);
+    Equal(116d, gauge.Width);
+    Equal(116d, gauge.Height);
+    Equal(116d, CodexWeeklyMonitor.Controls.GaugeControl.Diameter);
+    gauge.Update(97, 68);   // remaining percentages
     gauge.Update(null, null);
-    gauge.Update(0, 100);
-    gauge.Update(150, -5); // clamped, must not throw
-    gauge.Measure(new System.Windows.Size(200, 200));
-    gauge.Arrange(new System.Windows.Rect(0, 0, 200, 200));
+    gauge.Update(0, 100);   // dry tank / full tank
+    gauge.Update(150, -5);  // clamped, must not throw
+    gauge.Measure(new System.Windows.Size(160, 160));
+    gauge.Arrange(new System.Windows.Rect(0, 0, 160, 160));
 });
 
-RunSta("仪表盘可视直径保持 150 且阴影不会被窗口裁剪", () =>
+RunSta("液面球缩小后阴影仍不会被窗口裁剪", () =>
 {
     var gaugeWindow = new GaugeWindow();
     try
@@ -1329,11 +1331,17 @@ RunSta("仪表盘可视直径保持 150 且阴影不会被窗口裁剪", () =>
         gaugeWindow.SetValues(13, 65);
         gaugeWindow.Show();
         gaugeWindow.UpdateLayout();
-        Equal(150d, GaugeWindow.OrbDiameter);
-        Equal(190d, gaugeWindow.Width);
-        Equal(198d, gaugeWindow.Height);
-        Equal(190d, gaugeWindow.ActualWidth);
-        Equal(198d, gaugeWindow.ActualHeight);
+        Equal(118d, GaugeWindow.OrbDiameter);
+        Equal(GaugeWindow.ShadowCanvasWidth, gaugeWindow.Width);
+        Equal(GaugeWindow.ShadowCanvasHeight, gaugeWindow.Height);
+        Equal(GaugeWindow.ShadowCanvasWidth, gaugeWindow.ActualWidth);
+        Equal(GaugeWindow.ShadowCanvasHeight, gaugeWindow.ActualHeight);
+
+        // The orb shrank from the old 150, so the ball reads as an accessory.
+        if (GaugeWindow.OrbDiameter >= 130d)
+        {
+            throw new Exception("仪表盘悬浮球没有按要求缩小。");
+        }
 
         if (GaugeWindow.OrbOffsetX < 18d ||
             GaugeWindow.ShadowCanvasWidth - GaugeWindow.OrbOffsetX - GaugeWindow.OrbDiameter < 18d ||
@@ -1647,12 +1655,20 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             Loc.SetLanguage(AppLanguage.Chinese);
         }
 
-        var menuBackground = mainWindow.TryFindResource("ModernMenuBackgroundBrush") as SolidColorBrush
+        var menuBackgroundBrush = mainWindow.TryFindResource("ModernMenuBackgroundBrush") as System.Windows.Media.Brush
             ?? throw new Exception("未加载菜单配色。");
+        var menuBackgroundColor = menuBackgroundBrush switch
+        {
+            SolidColorBrush solid => solid.Color,
+            System.Windows.Media.GradientBrush gradient => gradient.GradientStops[0].Color,
+            _ => throw new Exception("菜单背景类型未知。"),
+        };
         var menuText = mainWindow.TryFindResource("ModernMenuTextBrush") as SolidColorBrush
             ?? throw new Exception("未加载菜单文字配色。");
-        // Dark menu, matching the Claude tray menu rather than the old light one.
-        if (menuBackground.Color.R > 0x60 || menuText.Color.R < 0xA0)
+        var menuHoverText = mainWindow.TryFindResource("ModernMenuHoverTextBrush") as SolidColorBrush
+            ?? throw new Exception("未加载菜单悬停文字配色。");
+        // Dark card, muted resting text, near-white hover text — the reference palette.
+        if (menuBackgroundColor.R > 0x60 || menuText.Color.R > 0xA0 || menuHoverText.Color.R < 0xE0)
         {
             throw new Exception("菜单配色不是深色主题。");
         }

@@ -203,32 +203,67 @@
                              Opened="CardContextMenu_Opened">
                     <MenuItem Header="{loc:Str menu.refresh}"
                               Style="{DynamicResource ModernMenuItemStyle}"
-                              FontWeight="SemiBold"
-                              Click="RefreshMenuItem_Click" />
+                              Click="RefreshMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M23 4v6h-6 M1 20v-6h6 M20.49 9A9 9 0 0 0 5.64 5.64L1 10 M3.51 15a9 9 0 0 0 14.85 3.36L23 14" />
+                        </MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem x:Name="DetailsMenuItem"
                               Header="{loc:Str menu.expandDetails}"
                               Style="{DynamicResource ModernMenuItemStyle}"
-                              Click="DetailsMenuItem_Click" />
+                              Click="DetailsMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01" />
+                        </MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem x:Name="HistoryMenuItem"
                               Header="{loc:Str menu.expandHistory}"
                               Style="{DynamicResource ModernMenuItemStyle}"
                               IsEnabled="False"
-                              Click="HistoryMenuItem_Click" />
+                              Click="HistoryMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M12 6v6l4 2" />
+                        </MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="{loc:Str menu.gauge}"
                               Style="{DynamicResource ModernMenuItemStyle}"
-                              Click="GaugeMenuItem_Click" />
+                              Click="GaugeMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+                        </MenuItem.Icon>
+                    </MenuItem>
+                    <Separator Style="{DynamicResource ModernMenuSeparatorStyle}" />
                     <MenuItem x:Name="TopmostMenuItem"
                               Header="{loc:Str menu.topmost}"
-                              Style="{DynamicResource ModernMenuItemStyle}"
+                              Style="{DynamicResource ModernMenuItemAccentStyle}"
                               IsCheckable="True"
                               IsChecked="True"
-                              Click="TopmostMenuItem_Click" />
+                              Click="TopmostMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M9.5 3h5l-.6 6 2.6 2.8H7.5l2.6-2.8z M12 14.8V21" />
+                        </MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="{loc:Str menu.minimizeTaskbar}"
-                              Style="{DynamicResource ModernMenuItemStyle}"
-                              Click="MinimizeMenuItem_Click" />
+                              Style="{DynamicResource ModernMenuItemAccentStyle}"
+                              Click="MinimizeMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M6 9l6 6 6-6 M5 20h14" />
+                        </MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="{loc:Str menu.hideTray}"
-                              Style="{DynamicResource ModernMenuItemStyle}"
-                              Click="HideMenuItem_Click" />
+                              Style="{DynamicResource ModernMenuItemAccentStyle}"
+                              Click="HideMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                        </MenuItem.Icon>
+                    </MenuItem>
                 </ContextMenu>
             </Border.ContextMenu>
 

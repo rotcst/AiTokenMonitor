@@ -11,11 +11,23 @@ namespace CodexWeeklyMonitor;
 /// </summary>
 public partial class GaugeWindow : Window
 {
-    public const double OrbDiameter = 150d;
-    public const double ShadowCanvasWidth = 190d;
-    public const double ShadowCanvasHeight = 198d;
-    public const double OrbOffsetX = 20d;
-    public const double OrbOffsetY = 12d;
+    // The visible orb, shrunk from the old 150 so the floating ball reads as an accessory, not a
+    // second window. Everything else — shadow canvas, ground shadow — is derived so one number moves it.
+    public const double OrbDiameter = 118d;
+    private const double SidePad = 18d;
+    private const double TopPad = 12d;
+    private const double BottomPad = 32d;
+
+    public const double OrbOffsetX = SidePad;
+    public const double OrbOffsetY = TopPad;
+    public const double ShadowCanvasWidth = OrbDiameter + (2 * SidePad);
+    public const double ShadowCanvasHeight = TopPad + OrbDiameter + BottomPad;
+
+    // Soft ground shadow pooled just under the lower rim, scaled to the orb.
+    public static double GroundShadowWidth => OrbDiameter * 0.72;
+    public static double GroundShadowHeight => OrbDiameter * 0.18;
+    public static double GroundShadowLeft => OrbOffsetX + (OrbDiameter / 2) - (GroundShadowWidth / 2);
+    public static double GroundShadowTop => OrbOffsetY + OrbDiameter - (GroundShadowHeight * 0.35);
 
     private readonly GaugeControl _gauge = new();
 

@@ -4,23 +4,46 @@
         Dark menu palette matching the Claude tray menu. TrayIconService reads these same keys, so
         the tray and the window's context menu stay in step.
     -->
-    <SolidColorBrush x:Key="ModernMenuBackgroundBrush" Color="#FF20242A" />
-    <SolidColorBrush x:Key="ModernMenuBorderBrush" Color="#FF343A43" />
-    <SolidColorBrush x:Key="ModernMenuTextBrush" Color="#FFF0F2F5" />
+    <!-- Reference palette (Uiverse by Na3ar-17): dark gradient card, blue hover, purple accent group. -->
+    <LinearGradientBrush x:Key="ModernMenuBackgroundBrush" StartPoint="0,0" EndPoint="0.85,1">
+        <GradientStop Offset="0" Color="#FF242832" />
+        <GradientStop Offset="1" Color="#FF251C28" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="ModernMenuBorderBrush" Color="#FF42434A" />
+    <SolidColorBrush x:Key="ModernMenuTextBrush" Color="#FF7E8590" />
+    <SolidColorBrush x:Key="ModernMenuHoverTextBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="ModernMenuBlueHoverBrush" Color="#FF5353FF" />
+    <SolidColorBrush x:Key="ModernMenuPurpleTextBrush" Color="#FFBD89FF" />
+    <SolidColorBrush x:Key="ModernMenuPurpleHoverBrush" Color="#D5382D47" />
+    <SolidColorBrush x:Key="ModernMenuRedHoverBrush" Color="#FF8E2A2A" />
     <SolidColorBrush x:Key="ModernMenuHoverBrush" Color="#FF2F343C" />
-    <SolidColorBrush x:Key="ModernMenuSeparatorBrush" Color="#FF343A43" />
-    <SolidColorBrush x:Key="ModernMenuMutedTextBrush" Color="#FF9AA3AD" />
+    <SolidColorBrush x:Key="ModernMenuSeparatorBrush" Color="#FF42434A" />
+    <SolidColorBrush x:Key="ModernMenuMutedTextBrush" Color="#FF7E8590" />
+
+    <Style x:Key="MenuIconStyle" TargetType="{x:Type Path}">
+        <Setter Property="Width" Value="18" />
+        <Setter Property="Height" Value="18" />
+        <Setter Property="Stretch" Value="Uniform" />
+        <Setter Property="Fill" Value="Transparent" />
+        <Setter Property="Stroke"
+                Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type MenuItem}}}" />
+        <Setter Property="StrokeThickness" Value="1.8" />
+        <Setter Property="StrokeStartLineCap" Value="Round" />
+        <Setter Property="StrokeEndLineCap" Value="Round" />
+        <Setter Property="StrokeLineJoin" Value="Round" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
 
     <Style x:Key="ModernContextMenuStyle" TargetType="{x:Type ContextMenu}">
         <Setter Property="OverridesDefaultStyle" Value="True" />
-        <Setter Property="MinWidth" Value="148" />
-        <Setter Property="Padding" Value="4" />
+        <Setter Property="MinWidth" Value="176" />
+        <Setter Property="Padding" Value="8" />
         <Setter Property="Background" Value="{StaticResource ModernMenuBackgroundBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource ModernMenuBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Foreground" Value="{StaticResource ModernMenuTextBrush}" />
         <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="11.5" />
         <Setter Property="HasDropShadow" Value="False" />
         <Setter Property="StaysOpen" Value="False" />
         <Setter Property="Template">
@@ -31,14 +54,14 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="7"
+                            CornerRadius="10"
                             SnapsToDevicePixels="True">
                         <Border.Effect>
-                            <DropShadowEffect BlurRadius="10"
+                            <DropShadowEffect BlurRadius="16"
                                               Direction="270"
-                                              ShadowDepth="2"
-                                              Opacity="0.20"
-                                              Color="#55000000" />
+                                              ShadowDepth="3"
+                                              Opacity="0.34"
+                                              Color="#70000000" />
                         </Border.Effect>
                         <ScrollViewer CanContentScroll="True"
                                       HorizontalScrollBarVisibility="Disabled"
@@ -52,12 +75,15 @@
     </Style>
 
     <Style x:Key="ModernMenuItemStyle" TargetType="{x:Type MenuItem}">
-        <Setter Property="Height" Value="27" />
-        <Setter Property="Padding" Value="7,0" />
-        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Height" Value="31" />
+        <Setter Property="Margin" Value="0,1.5" />
+        <Setter Property="Padding" Value="8,0" />
+        <!-- Background carries the item's HOVER colour; the resting chrome stays transparent. -->
+        <Setter Property="Background" Value="{StaticResource ModernMenuBlueHoverBrush}" />
         <Setter Property="Foreground" Value="{StaticResource ModernMenuTextBrush}" />
         <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="Template">
@@ -65,46 +91,62 @@
                 <ControlTemplate TargetType="{x:Type MenuItem}">
                     <Grid>
                         <Border x:Name="ModernMenuItemChrome"
-                                Padding="{TemplateBinding Padding}"
-                                Background="{TemplateBinding Background}"
-                                CornerRadius="4"
+                                Background="Transparent"
+                                CornerRadius="6"
+                                RenderTransformOrigin="0.5,0.5"
                                 SnapsToDevicePixels="True">
+                            <Border.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="ItemScale" ScaleX="1" ScaleY="1" />
+                                    <TranslateTransform x:Name="ItemSlide" X="0" Y="0" />
+                                </TransformGroup>
+                            </Border.RenderTransform>
                             <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="18" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="14" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="CheckGlyph"
-                                           Text="✓"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           FontFamily="Segoe UI Symbol"
-                                           FontSize="10.5"
-                                           FontWeight="SemiBold"
-                                           Foreground="{TemplateBinding Foreground}"
-                                           Visibility="Collapsed" />
-                                <ContentPresenter Grid.Column="1"
-                                                  VerticalAlignment="Center"
-                                                  ContentSource="Header"
-                                                  RecognizesAccessKey="True"
-                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
-                                <TextBlock x:Name="SubmenuArrow"
-                                           Grid.Column="2"
-                                           Text="›"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           FontFamily="Segoe UI Symbol"
-                                           FontSize="13"
-                                           Foreground="{TemplateBinding Foreground}"
-                                           Visibility="Collapsed" />
+                                <!-- Hover wash: its colour is the item's Background; opacity animates in. -->
+                                <Border x:Name="HoverFill"
+                                        Background="{TemplateBinding Background}"
+                                        CornerRadius="6"
+                                        Opacity="0" />
+                                <Grid Margin="{TemplateBinding Padding}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="26" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="14" />
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter x:Name="IconHost"
+                                                      Grid.Column="0"
+                                                      ContentSource="Icon"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center" />
+                                    <TextBlock x:Name="CheckGlyph"
+                                               Grid.Column="0"
+                                               Text="✓"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontFamily="Segoe UI Symbol"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{TemplateBinding Foreground}"
+                                               Visibility="Collapsed" />
+                                    <ContentPresenter Grid.Column="1"
+                                                      Margin="4,0,0,0"
+                                                      VerticalAlignment="Center"
+                                                      ContentSource="Header"
+                                                      RecognizesAccessKey="True"
+                                                      SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                                    <TextBlock x:Name="SubmenuArrow"
+                                               Grid.Column="2"
+                                               Text="›"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontFamily="Segoe UI Symbol"
+                                               FontSize="13"
+                                               Foreground="{TemplateBinding Foreground}"
+                                               Visibility="Collapsed" />
+                                </Grid>
                             </Grid>
                         </Border>
-                        <!--
-                            The old template rendered headers only. Without PART_Popup a MenuItem
-                            containing the language choices could highlight but never open or route
-                            a click to its children.
-                        -->
+                        <!-- PART_Popup routes clicks to submenu children (e.g. the language choices). -->
                         <Popup x:Name="PART_Popup"
                                AllowsTransparency="True"
                                Focusable="False"
@@ -112,13 +154,20 @@
                                Placement="Right"
                                PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
                                PopupAnimation="Fade">
-                            <Border MinWidth="132"
-                                    Padding="4"
+                            <Border MinWidth="150"
+                                    Padding="8"
                                     Background="{StaticResource ModernMenuBackgroundBrush}"
                                     BorderBrush="{StaticResource ModernMenuBorderBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="7"
+                                    CornerRadius="10"
                                     SnapsToDevicePixels="True">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="16"
+                                                      Direction="270"
+                                                      ShadowDepth="3"
+                                                      Opacity="0.34"
+                                                      Color="#70000000" />
+                                </Border.Effect>
                                 <ScrollViewer CanContentScroll="True"
                                               HorizontalScrollBarVisibility="Disabled"
                                               VerticalScrollBarVisibility="Auto">
@@ -128,24 +177,93 @@
                         </Popup>
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <!-- IsHighlighted covers both mouse-over and keyboard selection. -->
                         <Trigger Property="IsHighlighted" Value="True">
-                            <Setter TargetName="ModernMenuItemChrome"
-                                    Property="Background"
-                                    Value="{StaticResource ModernMenuHoverBrush}" />
+                            <Setter Property="Foreground" Value="{StaticResource ModernMenuHoverTextBrush}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverFill"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1"
+                                                         Duration="0:0:0.22" />
+                                        <DoubleAnimation Storyboard.TargetName="ItemSlide"
+                                                         Storyboard.TargetProperty="X"
+                                                         To="1.2"
+                                                         Duration="0:0:0.22">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="ItemSlide"
+                                                         Storyboard.TargetProperty="Y"
+                                                         To="-1.2"
+                                                         Duration="0:0:0.22">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="HoverFill"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0"
+                                                         Duration="0:0:0.18" />
+                                        <DoubleAnimation Storyboard.TargetName="ItemSlide"
+                                                         Storyboard.TargetProperty="X"
+                                                         To="0"
+                                                         Duration="0:0:0.18" />
+                                        <DoubleAnimation Storyboard.TargetName="ItemSlide"
+                                                         Storyboard.TargetProperty="Y"
+                                                         To="0"
+                                                         Duration="0:0:0.18" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
-                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                            <Setter TargetName="ModernMenuItemChrome"
-                                    Property="Background"
-                                    Value="{StaticResource ModernMenuHoverBrush}" />
+                        <Trigger Property="IsPressed" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ItemScale"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         To="0.985"
+                                                         Duration="0:0:0.06" />
+                                        <DoubleAnimation Storyboard.TargetName="ItemScale"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         To="0.985"
+                                                         Duration="0:0:0.06" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ItemScale"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         To="1"
+                                                         Duration="0:0:0.1" />
+                                        <DoubleAnimation Storyboard.TargetName="ItemScale"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         To="1"
+                                                         Duration="0:0:0.1" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="CheckGlyph" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="IconHost" Property="Visibility" Value="Collapsed" />
                         </Trigger>
                         <Trigger Property="HasItems" Value="True">
                             <Setter TargetName="SubmenuArrow" Property="Visibility" Value="Visible" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Opacity" Value="0.42" />
+                            <Setter Property="Opacity" Value="0.5" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -153,12 +271,20 @@
         </Setter>
     </Style>
 
+    <!-- The window-control group (last list): purple text, purple-tinted hover, echoing the reference. -->
+    <Style x:Key="ModernMenuItemAccentStyle"
+           TargetType="{x:Type MenuItem}"
+           BasedOn="{StaticResource ModernMenuItemStyle}">
+        <Setter Property="Background" Value="{StaticResource ModernMenuPurpleHoverBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource ModernMenuPurpleTextBrush}" />
+    </Style>
+
     <Style x:Key="ModernMenuSeparatorStyle" TargetType="{x:Type Separator}">
-        <Setter Property="Margin" Value="7,3" />
+        <Setter Property="Margin" Value="10,4" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Separator}">
-                    <Border Height="1"
+                    <Border Height="1.5"
                             Background="{StaticResource ModernMenuSeparatorBrush}"
                             SnapsToDevicePixels="True" />
                 </ControlTemplate>

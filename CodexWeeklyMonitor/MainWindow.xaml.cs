@@ -926,17 +926,24 @@ public partial class MainWindow : Window
 
     private bool IsGaugeVisible => _gaugeWindow is { IsVisible: true };
 
-    /// <summary>Feeds the orb the used-percent for each provider (5-hour window if present, else weekly).</summary>
+    /// <summary>Feeds the orb each provider's remaining quota (the water level), 5-hour window if present.</summary>
     private void PushGaugeValues()
     {
         _gaugeWindow?.SetValues(
-            GaugeUsedPercent(_currentSnapshot?.RateLimits.FiveHour, _currentSnapshot?.RateLimits.Weekly),
-            GaugeUsedPercent(_claudeSnapshot?.FiveHour, _claudeSnapshot?.Weekly));
+            GaugeRemainingPercent(_currentSnapshot?.RateLimits.FiveHour, _currentSnapshot?.RateLimits.Weekly),
+            GaugeRemainingPercent(_claudeSnapshot?.FiveHour, _claudeSnapshot?.Weekly));
     }
 
-    /// <summary>The percentage the orb needle points at: the 5-hour window if present, else weekly.</summary>
+    /// <summary>The window the orb reflects: the 5-hour one if present, else weekly (Codex's current shape).</summary>
     internal static int? GaugeUsedPercent(RateLimitWindow? fiveHour, RateLimitWindow? weekly) =>
         (fiveHour ?? weekly)?.UsedPercent;
+
+    /// <summary>
+    /// Remaining quota for the orb's water line: the inverse of <see cref="GaugeUsedPercent"/>, so a
+    /// full tank is 100% (fresh) and a dry tank is 0% (exhausted). Null when there is no window at all.
+    /// </summary>
+    internal static int? GaugeRemainingPercent(RateLimitWindow? fiveHour, RateLimitWindow? weekly) =>
+        GaugeUsedPercent(fiveHour, weekly) is { } used ? 100 - Math.Clamp(used, 0, 100) : null;
 
     private static bool IsInsideButton(DependencyObject? element)
     {

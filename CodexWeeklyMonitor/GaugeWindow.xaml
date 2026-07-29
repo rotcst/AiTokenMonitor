@@ -16,18 +16,18 @@
         SnapsToDevicePixels="True"
         MouseLeftButtonDown="Window_MouseLeftButtonDown">
     <!--
-        The visible orb remains 150x150. The larger transparent canvas is deliberate: WPF clips
-        bitmap effects at the window boundary, so a shadow needs real breathing room around it.
+        The larger transparent canvas is deliberate: WPF clips bitmap effects at the window boundary,
+        so the orb's shadow needs real breathing room around it. Sizes derive from OrbDiameter.
     -->
     <Canvas x:Name="ShadowCanvas"
             ClipToBounds="False"
             ToolTip="{loc:Str gauge.restoreHint}">
         <!-- A wide, low-contrast ground shadow keeps the orb visually anchored without a hard edge. -->
         <Ellipse x:Name="GroundShadow"
-                 Canvas.Left="43"
-                 Canvas.Top="158"
-                 Width="104"
-                 Height="26"
+                 Canvas.Left="{x:Static local:GaugeWindow.GroundShadowLeft}"
+                 Canvas.Top="{x:Static local:GaugeWindow.GroundShadowTop}"
+                 Width="{x:Static local:GaugeWindow.GroundShadowWidth}"
+                 Height="{x:Static local:GaugeWindow.GroundShadowHeight}"
                  IsHitTestVisible="False">
             <Ellipse.Fill>
                 <RadialGradientBrush Center="0.5,0.42"

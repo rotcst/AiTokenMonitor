@@ -1,285 +1,250 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using Color = System.Windows.Media.Color;
-using Point = System.Windows.Point;
-using Size = System.Windows.Size;
-using UserControl = System.Windows.Controls.UserControl;
-using Path = System.Windows.Shapes.Path;
-using Orientation = System.Windows.Controls.Orientation;
-using HorizontalAlignment = System.Windows.HorizontalAlignment;
-using VerticalAlignment = System.Windows.VerticalAlignment;
 using FontFamily = System.Windows.Media.FontFamily;
+using HorizontalAlignment = System.Windows.HorizontalAlignment;
+using LinearGradientBrush = System.Windows.Media.LinearGradientBrush;
+using Path = System.Windows.Shapes.Path;
+using Point = System.Windows.Point;
+using RadialGradientBrush = System.Windows.Media.RadialGradientBrush;
+using Rectangle = System.Windows.Shapes.Rectangle;
+using UserControl = System.Windows.Controls.UserControl;
+using VerticalAlignment = System.Windows.VerticalAlignment;
 
 namespace CodexWeeklyMonitor.Controls;
 
 /// <summary>
-/// A tachometer-style orb showing Codex and Claude usage at a glance. Each provider gets a filled
-/// progress sweep (0 → used%) with a tapered pointer riding its own ring, plus a redline zone and a
-/// digital readout — deliberately a car dashboard, not a clock face.
+/// The orb's liquid dashboard: one circle split into two chambers — Codex on the left, Claude on the
+/// right — each a draining tank whose water level is the provider's <em>remaining</em> quota. A full
+/// tank reads 100% (fresh), a dry tank 0% (exhausted), and the readout always matches the water line.
 /// </summary>
 /// <remarks>
-/// The scale is a 250° sweep with the gap at the bottom. Two concentric rings (Codex outer, Claude
-/// inner) keep the two values from colliding. Static chrome is built once; <see cref="Update"/> only
-/// rewrites the coloured progress arcs, the two pointers, and the readouts.
+/// The whole control is clipped to a circle; a thin seam splits it. Each chamber clips its own liquid
+/// so waves never bleed across the divider. The surface is two scrolling sine bands (a slow, faint
+/// back swell and a quicker front ripple) whose horizontal drift runs forever on their own storyboards.
+/// <see cref="Update"/> only slides the two water lines and rewrites the readouts.
 /// </remarks>
 public sealed class GaugeControl : UserControl
 {
-    private const double Scale = 1.5;
-    internal const double ControlSize = 92 * Scale;
-    internal const double ReadoutTop = 63 * Scale;
-    private const double Size = ControlSize;
-    private const double Center = Size / 2;
-    private const double MinAngle = -125;
-    private const double Sweep = 250;
-    private const double RedlineStart = 85;
-
-    private const double CodexRadius = 36 * Scale;
-    private const double ClaudeRadius = 26 * Scale;
-    private const double RingThickness = 4.2 * Scale;
+    /// <summary>Diameter of the liquid disc; it sits just inside the orb bezel the window paints.</summary>
+    internal const double Diameter = 116;
+    private const double Radius = Diameter / 2;
 
     private static readonly Color CodexColor = Color.FromRgb(0x6C, 0xE0, 0x7A);
     private static readonly Color ClaudeColor = Color.FromRgb(0xF0, 0x9A, 0x6E);
-    private static readonly Color TrackColor = Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF);
-    private static readonly Color RedlineColor = Color.FromRgb(0xF5, 0x45, 0x3C);
 
-    private readonly Canvas _canvas = new() { Width = Size, Height = Size };
-    private readonly TextBlock _codexReadout;
-    private readonly TextBlock _claudeReadout;
-
-    // Rebuilt on every Update() so the swept arc + pointer can change; kept to remove cleanly.
-    private readonly List<UIElement> _dynamic = [];
+    private readonly Chamber _codex;
+    private readonly Chamber _claude;
 
     public GaugeControl()
     {
-        Width = Size;
-        Height = Size;
+        Width = Diameter;
+        Height = Diameter;
 
-        // Background tracks for each ring.
-        AddStatic(BuildArc(0, 100, CodexRadius, TrackColor, RingThickness));
-        AddStatic(BuildArc(0, 100, ClaudeRadius, TrackColor, RingThickness));
-
-        // Redline band on the outer scale so the danger zone always reads.
-        AddStatic(BuildArc(RedlineStart, 100, CodexRadius, Color.FromArgb(0x55, RedlineColor.R, RedlineColor.G, RedlineColor.B), RingThickness));
-
-        // Bold major ticks + numbers, subtle minor ticks — car-gauge cadence, not clock ticks.
-        for (var pct = 0; pct <= 100; pct += 10)
+        var root = new Grid
         {
-            var major = pct % 20 == 0;
-            AddStatic(BuildTick(pct, major));
-            if (major)
-            {
-                AddStatic(BuildNumber(pct));
-            }
-        }
-
-        // Chrome-look hub.
-        var hub = new Ellipse
-        {
-            Width = 10 * Scale,
-            Height = 10 * Scale,
-            Fill = new RadialGradientBrush(
-                Color.FromRgb(0x5A, 0x63, 0x70),
-                Color.FromRgb(0x20, 0x25, 0x2D))
-            {
-                GradientOrigin = new Point(0.35, 0.3),
-                Center = new Point(0.35, 0.3),
-            },
-            Stroke = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
-            StrokeThickness = Scale,
+            Width = Diameter,
+            Height = Diameter,
+            ClipToBounds = true,
+            Clip = new EllipseGeometry(new Point(Radius, Radius), Radius, Radius),
         };
-        Canvas.SetLeft(hub, Center - (5 * Scale));
-        Canvas.SetTop(hub, Center - (5 * Scale));
-        AddStatic(hub);
 
-        // Digital readouts stacked in the bottom gap, colour-matched to their ring.
-        _codexReadout = BuildReadout(CodexColor);
-        _claudeReadout = BuildReadout(ClaudeColor);
-        var legend = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, Width = Size };
-        legend.Children.Add(BuildLegendRow(CodexColor, "CODEX", _codexReadout));
-        legend.Children.Add(BuildLegendRow(ClaudeColor, "CLAUDE", _claudeReadout));
-        Canvas.SetLeft(legend, 0);
-        Canvas.SetTop(legend, ReadoutTop);
-        AddStatic(legend);
+        _codex = new Chamber(CodexColor, "CODEX", isLeft: true);
+        _claude = new Chamber(ClaudeColor, "CLAUDE", isLeft: false);
+        root.Children.Add(_codex.Root);
+        root.Children.Add(_claude.Root);
+        root.Children.Add(BuildDivider());
+        root.Children.Add(BuildGlassHighlight());
 
-        Content = _canvas;
+        Content = root;
         Update(null, null);
     }
 
-    /// <summary>Redraws each ring's progress sweep + pointer and the readouts.</summary>
-    public void Update(int? codexPercent, int? claudePercent)
+    /// <summary>Sets each chamber's water line to the provider's remaining-quota percent (null = no data).</summary>
+    public void Update(int? codexRemaining, int? claudeRemaining)
     {
-        foreach (var element in _dynamic)
-        {
-            _canvas.Children.Remove(element);
-        }
-
-        _dynamic.Clear();
-
-        DrawProvider(codexPercent, CodexRadius, CodexColor, 32 * Scale);
-        DrawProvider(claudePercent, ClaudeRadius, ClaudeColor, 22 * Scale);
-
-        _codexReadout.Text = FormatPercent(codexPercent);
-        _claudeReadout.Text = FormatPercent(claudePercent);
+        _codex.SetLevel(codexRemaining);
+        _claude.SetLevel(claudeRemaining);
     }
 
-    private void DrawProvider(int? percent, double radius, Color color, double pointerLength)
+    internal static string FormatPercent(int? percent) => percent is null ? "--" : $"{percent}%";
+
+    // A faint vertical seam between the two tanks, fading out top and bottom so it reads as a divider,
+    // not a hard line drawn across the glass.
+    private static UIElement BuildDivider() => new Rectangle
     {
-        if (percent is not { } value)
-        {
-            return;
-        }
-
-        value = Math.Clamp(value, 0, 100);
-        if (value > 0)
-        {
-            // Filled progress sweep — the part that makes it read as a gauge rather than a clock.
-            var swept = BuildArc(0, value, radius, color, RingThickness);
-            AddDynamic(swept);
-        }
-
-        AddDynamic(BuildPointer(value, color, pointerLength));
-    }
-
-    private static double AngleFor(double percent) => MinAngle + (Sweep * percent / 100.0);
-
-    private static Point PointFor(double percent, double radius)
-    {
-        var radians = AngleFor(percent) * Math.PI / 180.0;
-        return new Point(
-            Center + (radius * Math.Sin(radians)),
-            Center - (radius * Math.Cos(radians)));
-    }
-
-    private static Path BuildArc(double startPercent, double endPercent, double radius, Color color, double thickness)
-    {
-        var figure = new PathFigure { StartPoint = PointFor(startPercent, radius) };
-        figure.Segments.Add(new ArcSegment
-        {
-            Point = PointFor(endPercent, radius),
-            Size = new Size(radius, radius),
-            SweepDirection = SweepDirection.Clockwise,
-            IsLargeArc = (endPercent - startPercent) * Sweep / 100.0 > 180,
-        });
-
-        return new Path
-        {
-            Stroke = new SolidColorBrush(color),
-            StrokeThickness = thickness,
-            StrokeStartLineCap = PenLineCap.Round,
-            StrokeEndLineCap = PenLineCap.Round,
-            Data = new PathGeometry([figure]),
-        };
-    }
-
-    private static Line BuildTick(double percent, bool major)
-    {
-        var outer = PointFor(percent, CodexRadius + RingThickness / 2 + (1.5 * Scale));
-        var inner = PointFor(percent, CodexRadius + RingThickness / 2 + ((major ? 5.5 : 3) * Scale));
-        return new Line
-        {
-            X1 = outer.X,
-            Y1 = outer.Y,
-            X2 = inner.X,
-            Y2 = inner.Y,
-            Stroke = new SolidColorBrush(percent >= RedlineStart
-                ? RedlineColor
-                : Color.FromArgb(major ? (byte)0xCC : (byte)0x66, 0xC6, 0xD0, 0xDA)),
-            StrokeThickness = (major ? 1.2 : 0.7) * Scale,
-            StrokeStartLineCap = PenLineCap.Round,
-            StrokeEndLineCap = PenLineCap.Round,
-        };
-    }
-
-    private static TextBlock BuildNumber(double percent)
-    {
-        var text = new TextBlock
-        {
-            Text = ((int)percent).ToString(),
-            FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
-            FontSize = 4.5 * Scale,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(Color.FromRgb(0x8C, 0x98, 0xA6)),
-        };
-        text.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var at = PointFor(percent, CodexRadius + RingThickness / 2 + (9 * Scale));
-        Canvas.SetLeft(text, at.X - text.DesiredSize.Width / 2);
-        Canvas.SetTop(text, at.Y - text.DesiredSize.Height / 2);
-        return text;
-    }
-
-    /// <summary>A tapered tach pointer: wide near the hub, sharp at the tip, with a short counterweight tail.</summary>
-    private static Shape BuildPointer(double percent, Color color, double length)
-    {
-        var polygon = new Polygon
-        {
-            Points =
-            [
-                new Point(Center, Center - length),   // tip
-                new Point(Center - (2.2 * Scale), Center - Scale),       // left shoulder
-                new Point(Center - (1.5 * Scale), Center + (5 * Scale)), // tail left
-                new Point(Center + (1.5 * Scale), Center + (5 * Scale)), // tail right
-                new Point(Center + (2.2 * Scale), Center - Scale),       // right shoulder
-            ],
-            Fill = new LinearGradientBrush(
-                Color.FromArgb(0xFF, color.R, color.G, color.B),
-                Color.FromArgb(0xB0, color.R, color.G, color.B),
-                90),
-            Stroke = new SolidColorBrush(Color.FromArgb(0x40, 0x00, 0x00, 0x00)),
-            StrokeThickness = 0.4 * Scale,
-            RenderTransform = new RotateTransform(AngleFor(percent), Center, Center),
-        };
-        polygon.Effect = new System.Windows.Media.Effects.DropShadowEffect
-        {
-            BlurRadius = 3 * Scale,
-            ShadowDepth = 0,
-            Opacity = 0.5,
-            Color = color,
-        };
-        return polygon;
-    }
-
-    private static TextBlock BuildReadout(Color color) => new()
-    {
-        Text = "--",
-        FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
-        FontSize = 6.5 * Scale,
-        FontWeight = FontWeights.Bold,
-        Foreground = new SolidColorBrush(color),
-        VerticalAlignment = VerticalAlignment.Center,
-        Margin = new Thickness(2.5 * Scale, 0, 0, 0),
-        MinWidth = 17 * Scale,
+        Width = 1.1,
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Stretch,
+        Margin = new Thickness(0, Radius * 0.3, 0, Radius * 0.3),
+        IsHitTestVisible = false,
+        Fill = new LinearGradientBrush(
+            new GradientStopCollection
+            {
+                new GradientStop(Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 0),
+                new GradientStop(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF), 0.5),
+                new GradientStop(Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 1),
+            },
+            new Point(0.5, 0),
+            new Point(0.5, 1)),
     };
 
-    private static UIElement BuildLegendRow(Color color, string name, TextBlock readout)
+    // A soft light spot in the upper-left sells the "glass sphere" read over the flat liquid.
+    private static UIElement BuildGlassHighlight() => new Ellipse
     {
-        var row = new StackPanel
+        Width = Diameter * 0.6,
+        Height = Diameter * 0.4,
+        HorizontalAlignment = HorizontalAlignment.Left,
+        VerticalAlignment = VerticalAlignment.Top,
+        Margin = new Thickness(Diameter * 0.1, Diameter * 0.06, 0, 0),
+        IsHitTestVisible = false,
+        Fill = new RadialGradientBrush(
+            new GradientStopCollection
+            {
+                new GradientStop(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF), 0),
+                new GradientStop(Color.FromArgb(0x00, 0xFF, 0xFF, 0xFF), 1),
+            })
         {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 0, 0, Scale),
-        };
-        row.Children.Add(new TextBlock
-        {
-            Text = name,
-            FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
-            FontSize = 4.8 * Scale,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(Color.FromArgb(0xB0, color.R, color.G, color.B)),
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-        row.Children.Add(readout);
-        return row;
-    }
+            GradientOrigin = new Point(0.4, 0.35),
+            Center = new Point(0.4, 0.35),
+        },
+    };
 
-    private static string FormatPercent(int? percent) => percent is null ? "--" : $"{percent}%";
-
-    private void AddStatic(UIElement element) => _canvas.Children.Add(element);
-
-    private void AddDynamic(UIElement element)
+    /// <summary>One half of the orb: a clipped tank with layered scrolling waves and a readout.</summary>
+    private sealed class Chamber
     {
-        _canvas.Children.Add(element);
-        _dynamic.Add(element);
+        private const double Width = Radius;              // each tank spans half the disc
+        private const double TileWidth = Radius * 3;      // wide enough that a scrolled wave never gaps
+        private static readonly FontFamily MonoFont = new("Cascadia Mono, Consolas, monospace");
+
+        private readonly List<TranslateTransform> _levelTransforms = [];
+        private readonly TextBlock _readout;
+
+        public Chamber(Color color, string name, bool isLeft)
+        {
+            Root = new Grid
+            {
+                Width = Width,
+                Height = Diameter,
+                ClipToBounds = true,
+                HorizontalAlignment = isLeft ? HorizontalAlignment.Left : HorizontalAlignment.Right,
+            };
+
+            // Liquid lives in its own canvas so the wave paths can be freely positioned and scrolled.
+            var liquid = new Canvas { ClipToBounds = true, IsHitTestVisible = false };
+            // Back swell: taller, slower, fainter. Front ripple: shorter, quicker, brighter.
+            liquid.Children.Add(BuildWave(color, alpha: 0x3A, amplitude: 3.4, wavelength: Width, seconds: 6.5, phase: 0));
+            liquid.Children.Add(BuildWave(color, alpha: 0x5E, amplitude: 2.5, wavelength: Width * 0.62, seconds: 4.3, phase: Math.PI * 0.6));
+            Root.Children.Add(liquid);
+
+            // Readout sits dead-centre of its own tank — horizontally and vertically centred — so it
+            // reads the same whatever the water line, with a shadow keeping it legible over either.
+            var nameLabel = new TextBlock
+            {
+                Text = name,
+                FontFamily = MonoFont,
+                FontSize = 7.5,
+                FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 38, 0, 0),
+                IsHitTestVisible = false,
+                Foreground = new SolidColorBrush(Color.FromArgb(0xB4, color.R, color.G, color.B)),
+            };
+            _readout = new TextBlock
+            {
+                Text = "--",
+                FontFamily = MonoFont,
+                FontSize = 17,
+                FontWeight = FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 4, 0, 0),
+                IsHitTestVisible = false,
+                Foreground = new SolidColorBrush(Lighten(color)),
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    BlurRadius = 4,
+                    ShadowDepth = 0,
+                    Opacity = 0.9,
+                    Color = Color.FromRgb(0, 0, 0),
+                },
+            };
+            Root.Children.Add(_readout);
+            Root.Children.Add(nameLabel);
+        }
+
+        public Grid Root { get; }
+
+        /// <summary>Slides the water line to the remaining-quota percent and updates the readout.</summary>
+        public void SetLevel(int? remaining)
+        {
+            _readout.Text = FormatPercent(remaining);
+
+            // Water line measured from the top: full quota → line at the top (y = 0); empty → bottom.
+            var fraction = remaining is { } value ? Math.Clamp(value, 0, 100) / 100.0 : 0;
+            var lineY = Diameter * (1 - fraction);
+
+            var slide = new DoubleAnimation(lineY, TimeSpan.FromMilliseconds(650))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut },
+            };
+            foreach (var transform in _levelTransforms)
+            {
+                transform.BeginAnimation(TranslateTransform.YProperty, slide);
+            }
+        }
+
+        // A filled band whose top edge is a sine wave. It scrolls horizontally forever; SetLevel drives
+        // its vertical offset. The geometry reaches far below the disc so a low water line still fills.
+        private UIElement BuildWave(Color color, byte alpha, double amplitude, double wavelength, double seconds, double phase)
+        {
+            var figure = new PathFigure { StartPoint = new Point(0, WaveAt(0, amplitude, wavelength, phase)) };
+            var edge = new PolyLineSegment();
+            const int steps = 48;
+            for (var i = 1; i <= steps; i++)
+            {
+                var x = TileWidth * i / steps;
+                edge.Points.Add(new Point(x, WaveAt(x, amplitude, wavelength, phase)));
+            }
+
+            edge.Points.Add(new Point(TileWidth, Diameter * 2));
+            edge.Points.Add(new Point(0, Diameter * 2));
+            figure.Segments.Add(edge);
+            figure.IsClosed = true;
+
+            var levelTransform = new TranslateTransform(0, Diameter);   // starts empty; SetLevel raises it
+            _levelTransforms.Add(levelTransform);
+            var scrollTransform = new TranslateTransform(0, 0);
+
+            var path = new Path
+            {
+                Fill = new SolidColorBrush(Color.FromArgb(alpha, color.R, color.G, color.B)),
+                IsHitTestVisible = false,
+                Data = new PathGeometry([figure]),
+                RenderTransform = new TransformGroup { Children = { scrollTransform, levelTransform } },
+            };
+            // Centre the wide tile over the narrow chamber so both scroll directions stay covered.
+            Canvas.SetLeft(path, -(TileWidth - Width) / 2);
+
+            var drift = new DoubleAnimation(0, -wavelength, TimeSpan.FromSeconds(seconds))
+            {
+                RepeatBehavior = RepeatBehavior.Forever,
+            };
+            scrollTransform.BeginAnimation(TranslateTransform.XProperty, drift);
+            return path;
+        }
+
+        private static double WaveAt(double x, double amplitude, double wavelength, double phase) =>
+            amplitude * Math.Sin((2 * Math.PI * x / wavelength) + phase);
+
+        // Pull the readout colour toward white so the digits pop against their own tinted water.
+        private static Color Lighten(Color color) => Color.FromRgb(
+            (byte)(color.R + ((255 - color.R) * 0.45)),
+            (byte)(color.G + ((255 - color.G) * 0.45)),
+            (byte)(color.B + ((255 - color.B) * 0.45)));
     }
 }
