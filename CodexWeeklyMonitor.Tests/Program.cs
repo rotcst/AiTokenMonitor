@@ -600,6 +600,87 @@ Run("解析 Codex 账号统计的 Token 历史与使用画像", () =>
     Equal("max", stats.MostUsedReasoningEffort);
 });
 
+Run("合并 Codex 数据时由 app-server 额度窗口决定头部百分比", () =>
+{
+    var appFetchedAt = new DateTimeOffset(2026, 7, 30, 12, 0, 0, TimeSpan.Zero);
+    var apiFetchedAt = appFetchedAt.AddSeconds(-2);
+    var resetAt = appFetchedAt.AddDays(7);
+    var appServerSnapshot = new CodexUsageSnapshot(
+        new AccountRateLimits(
+            FiveHour: null,
+            Weekly: new RateLimitWindow(19, resetAt, 10_080),
+            Credits: null,
+            AvailableResetCount: 3,
+            PlanType: "plus",
+            FetchedAt: appFetchedAt),
+        TokenUsage: null,
+        TokenUsageError: "app-server token history unavailable",
+        FetchedAt: appFetchedAt);
+    var apiSnapshot = new CodexUsageSnapshot(
+        new AccountRateLimits(
+            FiveHour: null,
+            Weekly: new RateLimitWindow(11, resetAt, 10_080),
+            Credits: new CreditBalance("12.50", true, false),
+            AvailableResetCount: 2,
+            PlanType: "plus",
+            FetchedAt: apiFetchedAt),
+        TokenUsage: new AccountTokenUsage(
+            LifetimeTokens: 42,
+            PeakDailyTokens: 42,
+            LongestRunningTurnSeconds: null,
+            CurrentStreakDays: null,
+            LongestStreakDays: null,
+            DailyUsage: [],
+            FetchedAt: apiFetchedAt),
+        TokenUsageError: null,
+        FetchedAt: apiFetchedAt,
+        Detail: new CodexAccountDetail(
+            Email: "someone@example.com",
+            PlanType: "plus",
+            RateLimitAllowed: true,
+            LimitReached: false,
+            LimitTitle: null,
+            LimitDescription: null,
+            ModelLimits: [],
+            Credits: null,
+            Profile: null,
+            SpendLimitReached: false,
+            Source: "source.official"));
+
+    var merged = CodexUsageProvider.MergeSnapshots(appServerSnapshot, apiSnapshot);
+
+    Equal(19, merged.RateLimits.Weekly!.UsedPercent);
+    Equal(81, merged.RateLimits.Weekly.RemainingPercent);
+    Equal("12.50", merged.RateLimits.Credits!.Balance);
+    Equal<long?>(3, merged.RateLimits.AvailableResetCount);
+    Equal<long?>(42, merged.TokenUsage!.LifetimeTokens);
+    Equal("someone@example.com", merged.Detail!.Email);
+    Equal("source.appServerWithOfficialDetails", merged.Detail.Source);
+    Equal(appFetchedAt, merged.FetchedAt);
+});
+
+Run("Codex 旧快照会在详情中显示刷新错误", () =>
+{
+    var fetchedAt = new DateTimeOffset(2026, 7, 30, 12, 0, 0, TimeSpan.Zero);
+    var snapshot = new CodexUsageSnapshot(
+        new AccountRateLimits(
+            FiveHour: null,
+            Weekly: new RateLimitWindow(19, fetchedAt.AddDays(7), 10_080),
+            Credits: null,
+            AvailableResetCount: null,
+            PlanType: "plus",
+            FetchedAt: fetchedAt),
+        TokenUsage: null,
+        TokenUsageError: null,
+        FetchedAt: fetchedAt);
+
+    var sections = UsageDetailBuilder.BuildCodex(snapshot, "refresh failed");
+    var status = sections
+        .SelectMany(section => section.Items)
+        .Single(item => item.Label == Loc.T("lbl.status"));
+    Equal("refresh failed", status.Value);
+});
+
 Run("CLAUDE_CONFIG_DIR 指向的目录同时用于凭据和会话记录", () =>
 {
     var root = Path.Combine(Path.GetTempPath(), "AiTokenMonitorTests", Guid.NewGuid().ToString("N"));
@@ -1438,6 +1519,25 @@ Run("仪表盘水位取剩余额度,5 小时优先否则周额度", () =>
     // Fully consumed -> empty tank; untouched -> full tank.
     Equal<int?>(0, MainWindow.GaugeRemainingPercent(new RateLimitWindow(100, DateTimeOffset.Now, 300), null));
     Equal<int?>(100, MainWindow.GaugeRemainingPercent(new RateLimitWindow(0, DateTimeOffset.Now, 300), null));
+});
+
+Run("Codex 旧额度在卡片提示和托盘中带陈旧标记", () =>
+{
+    var original = Loc.Current;
+    try
+    {
+        Loc.SetLanguage(AppLanguage.English);
+        var weekly = new RateLimitWindow(19, DateTimeOffset.Now.AddDays(7), 10_080);
+        Equal("81%", MainWindow.FormatWeeklyTooltip(weekly));
+        Equal("~81%", MainWindow.FormatWeeklyTooltip(weekly, isStale: true));
+        Equal(
+            "Codex · Plus: weekly ~19% used (stale)",
+            MainWindow.FormatTrayStatusLine("Codex", "plus", weekly, isStale: true));
+    }
+    finally
+    {
+        Loc.SetLanguage(original);
+    }
 });
 
 RunSta("液面球渲染各种剩余取值不抛异常", () =>

@@ -32,6 +32,7 @@ public static class UsageDetailBuilder
             false => Loc.T("val.exhausted"),
             null => null,
         });
+        Add(account, Loc.T("lbl.status"), error);
         Add(account, Loc.T("lbl.updateTime"), Timestamp(snapshot.FetchedAt));
         AddSection(sections, Loc.T("sec.account"), account);
 

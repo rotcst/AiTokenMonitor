@@ -22,9 +22,10 @@
 ## 기능
 
 - **두 서비스, 한 창**: 하단 탭으로 Codex / Claude 전환.
-- **추정이 아닌 실제 한도**: CLI가 쓰는 것과 같은 공식 엔드포인트를 읽습니다.
+- **추정이 아닌 실제 한도**: CLI가 쓰는 것과 같은 공식 데이터 경로를 읽습니다.
   - Claude: `GET https://api.anthropic.com/api/oauth/usage` (`/usage` 의 원본).
-  - Codex: ChatGPT 백엔드 `wham/usage`, `wham/profiles/me`, `wham/rate-limit-reset-credits`.
+  - Codex: 주요 한도 창은 `codex app-server`의 `account/rateLimits/read`를 사용하고, ChatGPT
+    백엔드 `wham/usage`, `wham/profiles/me`, `wham/rate-limit-reset-credits`로 세부 정보를 보완합니다.
 - **5시간 · 주간 한도** + 정확한 재설정 시각과 남은 시간.
 - **크레딧 잔액 · 사용 크레딧**, 모델별 주간 한도(Opus / Sonnet / GPT-5-Codex …), 지출 한도, 한도 알림.
 - **액체 오브 모드**: 카드를 더블클릭하면 작은 오브로 접히며, 좌우 두 수조가 각각 Codex와 Claude로,
@@ -67,8 +68,9 @@ Releases 페이지에서 새 버전을 직접 다운로드하세요.
 `CLAUDE_CONFIG_DIR` 와 `CODEX_HOME` 를 전 구간에서 존중하므로, 설정 폴더를 옮겨도 "한도는 읽혔는데
 토큰은 비어 있는" 반쪽 상태가 생기지 않습니다.
 
-Codex 는 공식 HTTP API 를 우선 사용하며, 저장된 토큰이 만료되면 `codex app-server` 를 띄우는 방식으로
-폴백합니다(토큰 갱신은 CLI가 직접 수행). 카드의 상태 줄에 현재 어떤 경로인지 표시됩니다.
+Codex 는 지원되는 `codex app-server` 한도 스냅샷을 주요 창에 사용하고 공식 HTTP 엔드포인트의
+세부 정보를 합칩니다. app-server 를 사용할 수 없으면 HTTP 스냅샷으로 폴백합니다. 새로고침에
+실패하면 마지막 성공 값을 유지하되 이전 데이터임을 명확히 표시합니다.
 
 ## 개인정보
 

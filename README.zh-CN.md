@@ -20,9 +20,10 @@
 ## 功能
 
 - **两个 Provider，一个窗口**：底部标签在 Codex / Claude 之间切换。
-- **真实额度，不靠估算**：读取与 CLI 相同的官方接口——
+- **真实额度，不靠估算**：读取与 CLI 相同的官方数据面——
   - Claude：`GET https://api.anthropic.com/api/oauth/usage`（即 `/usage` 背后的数据源）。
-  - Codex：ChatGPT 后端 `wham/usage`、`wham/profiles/me`、`wham/rate-limit-reset-credits`。
+  - Codex：头部额度采用 `codex app-server` 的 `account/rateLimits/read`，并用 ChatGPT 后端
+    `wham/usage`、`wham/profiles/me`、`wham/rate-limit-reset-credits` 补充详情。
 - **5 小时与周额度**，含精确重置时间和倒计时。
 - **充值余额、用量额度**、分模型周额度（Opus / Sonnet / GPT-5-Codex …）、支出上限、限额提示文案。
 - **液面悬浮球**：双击卡片可收成一个小悬浮球，左右两个水舱分别是 Codex 与 Claude，水位＝各自的
@@ -61,8 +62,9 @@
 `CLAUDE_CONFIG_DIR` 和 `CODEX_HOME` 全程生效，改过配置目录也不会出现「额度读到了、Token 却是空的」
 这种半通状态。
 
-Codex 优先走官方 HTTP 接口；若本机存的令牌过期，则回退到拉起 `codex app-server`（由 CLI 自己续期）。
-卡片状态行会标明当前走的是哪条路。
+Codex 以受支持的 `codex app-server` 额度快照作为头部窗口，并用官方 HTTP 接口补充账号详情；
+若 app-server 不可用，则回退到 HTTP 快照。刷新失败时会保留最后一次成功数据，但明确标记为旧数据，
+不会继续伪装成实时值。
 
 ## 隐私
 

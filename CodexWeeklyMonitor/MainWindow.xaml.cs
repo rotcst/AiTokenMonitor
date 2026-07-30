@@ -246,11 +246,15 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             _codexError = exception;
+            var staleSnapshot = _currentSnapshot is null
+                ? string.Empty
+                : $", staleSnapshotAt={_currentSnapshot.FetchedAt:O}, " +
+                  $"weeklyUsedPercent={_currentSnapshot.RateLimits.Weekly?.UsedPercent.ToString() ?? "unknown"}";
             DiagnosticsLog.Write(
                 "MainWindow",
-                $"Codex refresh failed: {exception.GetType().FullName}: {exception.Message}");
+                $"Codex refresh failed: {exception.GetType().FullName}: {exception.Message}{staleSnapshot}");
             UpdateTrayTooltip();
-            ApplyError(exception);
+            ApplyError();
         }
         finally
         {
@@ -333,18 +337,21 @@ public partial class MainWindow : Window
             return;
         }
 
+        var isStale = _codexError is not null;
         ApplyRateWindow(
             snapshot.RateLimits.FiveHour,
             FiveHourRemainingText,
             FiveHourUsedText,
             FiveHourProgress,
-            FiveHourResetText);
+            FiveHourResetText,
+            isStale: isStale);
         ApplyRateWindow(
             snapshot.RateLimits.Weekly,
             WeeklyRemainingText,
             WeeklyUsedText,
             WeeklyProgress,
-            WeeklyResetText);
+            WeeklyResetText,
+            isStale: isStale);
 
         BalanceText.Text = FormatBalance(snapshot.RateLimits.Credits);
         ResetCreditsText.Text = snapshot.RateLimits.AvailableResetCount is { } count
@@ -382,11 +389,15 @@ public partial class MainWindow : Window
             .Select(value => value!.Value)
             .DefaultIfEmpty(0)
             .Max();
-        StatusDot.Fill = GetUsageBrush(observedUsage);
-        ConnectionText.Text = snapshot.Detail?.Source is { } source
-            ? Loc.T("conn.liveWithSource", Loc.T(source))
-            : Loc.T("conn.live");
-        UpdatedText.Text = Loc.T("time.updated", TimeStamp(snapshot.FetchedAt));
+        StatusDot.Fill = isStale ? DangerBrush : GetUsageBrush(observedUsage);
+        ConnectionText.Text = isStale
+            ? Loc.T("conn.stale")
+            : snapshot.Detail?.Source is { } source
+                ? Loc.T("conn.liveWithSource", Loc.T(source))
+                : Loc.T("conn.live");
+        UpdatedText.Text = isStale
+            ? Loc.T("time.stale", TimeStamp(snapshot.FetchedAt))
+            : Loc.T("time.updated", TimeStamp(snapshot.FetchedAt));
         RenderExpandedPanel();
     }
 
@@ -562,6 +573,7 @@ public partial class MainWindow : Window
 
         return subscriptionType.ToLowerInvariant() switch
         {
+            "plus" => "Plus",
             "pro" => "Pro",
             "max" => "Max",
             "team" => "Team",
@@ -577,8 +589,15 @@ public partial class MainWindow : Window
         TextBlock usedText,
         ProgressBar progress,
         TextBlock resetText,
-        string? unavailableText = null)
+        string? unavailableText = null,
+        bool isStale = false)
     {
+        var opacity = isStale ? 0.55 : 1d;
+        remainingText.Opacity = opacity;
+        usedText.Opacity = opacity;
+        progress.Opacity = opacity;
+        resetText.Opacity = opacity;
+
         if (window is null)
         {
             remainingText.Text = "—";
@@ -589,8 +608,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        remainingText.Text = $"{window.RemainingPercent}%";
-        usedText.Text = Loc.T("card.used", window.UsedPercent);
+        remainingText.Text = isStale
+            ? $"~{window.RemainingPercent}%"
+            : $"{window.RemainingPercent}%";
+        usedText.Text = Loc.T(isStale ? "card.usedApprox" : "card.used", window.UsedPercent);
         progress.Value = window.UsedPercent;
         progress.Foreground = GetUsageBrush(window.UsedPercent);
         resetText.Text = FormatResetTime(window.ResetsAt);
@@ -687,7 +708,7 @@ public partial class MainWindow : Window
             .ToArray();
     }
 
-    private void ApplyError(Exception exception)
+    private void ApplyError()
     {
         if (_activeProvider != UsageProvider.Codex)
         {
@@ -695,23 +716,20 @@ public partial class MainWindow : Window
         }
 
         RenderCodex();
-        StatusDot.Fill = DangerBrush;
-        ConnectionText.Text = _currentSnapshot is null
-            ? Loc.T("conn.connectFailed")
-            : Loc.T("conn.updateFailed");
-        UpdatedText.Text = Loc.T("time.failed", TimeStamp(DateTime.Now));
     }
 
     private void UpdateTrayTooltip()
     {
-        var codexWeekly = FormatWeeklyTooltip(_currentSnapshot?.RateLimits.Weekly);
+        var codexIsStale = _currentSnapshot is not null && _codexError is not null;
+        var codexWeekly = FormatWeeklyTooltip(_currentSnapshot?.RateLimits.Weekly, codexIsStale);
         var claudeWeekly = FormatWeeklyTooltip(_claudeSnapshot?.Weekly);
         _trayIcon.ToolTipText = $"Codex周剩余:{codexWeekly} | Claude周剩余:{claudeWeekly}";
         _trayIcon.UpdateMenuStatus(
             FormatTrayStatusLine(
                 "Codex",
                 _currentSnapshot?.Detail?.PlanType,
-                _currentSnapshot?.RateLimits.Weekly),
+                _currentSnapshot?.RateLimits.Weekly,
+                codexIsStale),
             FormatTrayStatusLine(
                 "Claude",
                 _claudeSnapshot?.Account?.SubscriptionType,
@@ -719,19 +737,27 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Mirrors the Claude tray menu's "plan / usage" block for one provider.</summary>
-    private static string FormatTrayStatusLine(string provider, string? plan, RateLimitWindow? weekly)
+    internal static string FormatTrayStatusLine(
+        string provider,
+        string? plan,
+        RateLimitWindow? weekly,
+        bool isStale = false)
     {
         var head = string.IsNullOrWhiteSpace(plan)
             ? provider
             : $"{provider} · {FormatPlanName(plan)}";
         return weekly is null
             ? Loc.T("tray.weeklyUnknown", head)
-            : Loc.T("tray.weeklyUsed", head, weekly.UsedPercent);
+            : Loc.T(isStale ? "tray.weeklyUsedStale" : "tray.weeklyUsed", head, weekly.UsedPercent);
     }
 
-    private static string FormatWeeklyTooltip(RateLimitWindow? window)
+    internal static string FormatWeeklyTooltip(RateLimitWindow? window, bool isStale = false)
     {
-        return window is null ? "--" : $"{window.RemainingPercent}%";
+        return window is null
+            ? "--"
+            : isStale
+                ? $"~{window.RemainingPercent}%"
+                : $"{window.RemainingPercent}%";
     }
 
     private void UpdateResetLabels()

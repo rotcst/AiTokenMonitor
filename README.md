@@ -23,9 +23,10 @@ system tray after opening the main window. Launching it again restores the exist
 ## Features
 
 - **Two providers, one window.** Toggle between Codex and Claude with the tabs at the bottom.
-- **Real quota, not guesses.** Reads the same official endpoints the CLIs use:
+- **Real quota, not guesses.** Reads the same official surfaces the CLIs use:
   - Claude: `GET https://api.anthropic.com/api/oauth/usage` (the source behind `/usage`).
-  - Codex: ChatGPT backend `wham/usage`, `wham/profiles/me`, `wham/rate-limit-reset-credits`.
+  - Codex: `codex app-server` method `account/rateLimits/read` for headline windows, enriched by
+    ChatGPT backend `wham/usage`, `wham/profiles/me`, and `wham/rate-limit-reset-credits`.
 - **5-hour and weekly windows** with exact reset times and countdowns.
 - **Credit balance & usage credits**, per-model weekly buckets (Opus / Sonnet / GPT-5-Codex, …),
   spend caps, and the plan's limit notices.
@@ -72,9 +73,10 @@ client already writes locally:
 `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are honoured throughout, so relocating a config directory
 never leaves you with "quota loaded but tokens empty".
 
-Codex prefers the official HTTP API; if the stored token has expired it falls back to launching
-`codex app-server` (the CLI renews the token itself). The card's status line shows which route is
-live.
+Codex uses the supported `codex app-server` rate-limit snapshot for the headline windows and enriches
+it with details from the official HTTP endpoints. If the app-server is unavailable, the HTTP snapshot
+is used as a fallback. A failed refresh keeps the last snapshot visibly marked as stale instead of
+presenting it as live data.
 
 ## Privacy
 

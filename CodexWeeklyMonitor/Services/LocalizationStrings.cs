@@ -37,11 +37,13 @@ internal static class Strings
         ["conn.claudeQuotaFailed"] = ["Claude 额度读取失败", "Claude quota read failed", "Claude 한도 읽기 실패"],
         ["conn.connectFailed"] = ["连接失败", "Connection failed", "연결 실패"],
         ["conn.updateFailed"] = ["更新暂时失败", "Update failed", "업데이트 실패"],
+        ["conn.stale"] = ["更新失败 · 显示旧数据", "Update failed · showing stale data", "업데이트 실패 · 이전 데이터 표시 중"],
 
         // Rate-window cards
         ["card.fiveHour"] = ["5 小时额度", "5-hour limit", "5시간 한도"],
         ["card.weekly"] = ["周额度", "Weekly limit", "주간 한도"],
         ["card.used"] = ["已用 {0}%", "{0}% used", "{0}% 사용"],
+        ["card.usedApprox"] = ["约已用 {0}% · 旧数据", "~{0}% used · stale", "약 {0}% 사용 · 이전 데이터"],
         ["card.notProvided"] = ["未提供", "Not provided", "제공 안 됨"],
         ["card.waitingData"] = ["等待数据", "Waiting for data", "데이터 대기 중"],
         ["card.waitingCodex"] = ["等待 Codex 数据", "Waiting for Codex", "Codex 대기 중"],
@@ -90,11 +92,13 @@ internal static class Strings
         // Time-stamped status
         ["time.updated"] = ["{0} 更新", "Updated {0}", "{0} 업데이트"],
         ["time.failed"] = ["{0} 失败", "{0} failed", "{0} 실패"],
+        ["time.stale"] = ["旧数据截至 {0}", "Stale data from {0}", "이전 데이터 기준 {0}"],
         ["time.check"] = ["{0} 检查", "Checked {0}", "{0} 확인"],
 
         // Data sources
         ["source.official"] = ["官方接口", "Official API", "공식 API"],
         ["source.appServer"] = ["本机 app-server", "Local app-server", "로컬 app-server"],
+        ["source.appServerWithOfficialDetails"] = ["app-server 额度 · 官方详情", "App-server quota · official details", "app-server 한도 · 공식 세부정보"],
         ["source.officialUsage"] = ["官方用量接口", "Official usage API", "공식 사용량 API"],
         ["source.localSession"] = ["本机会话记录", "Local session logs", "로컬 세션 기록"],
         ["source.statusBridge"] = ["状态栏桥接", "Status-line bridge", "상태줄 브리지"],
@@ -142,6 +146,7 @@ internal static class Strings
         // Tray status lines
         ["tray.weeklyUnknown"] = ["{0}：周额度未知", "{0}: weekly unknown", "{0}: 주간 한도 미상"],
         ["tray.weeklyUsed"] = ["{0}：周额度已用 {1}%", "{0}: weekly {1}% used", "{0}: 주간 {1}% 사용"],
+        ["tray.weeklyUsedStale"] = ["{0}：周额度约已用 {1}%（旧数据）", "{0}: weekly ~{1}% used (stale)", "{0}: 주간 약 {1}% 사용 (이전 데이터)"],
 
         // Header button caption + arrow ({0} = ▾ / ▴)
         ["header.detailsArrow"] = ["详情 {0}", "Details {0}", "세부 {0}"],
