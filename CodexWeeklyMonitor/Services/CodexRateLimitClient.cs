@@ -135,7 +135,7 @@ public sealed class CodexRateLimitClient : IAsyncDisposable
             {
                 name = "ai_token_monitor",
                 title = "AI TOKEN Usage Monitor",
-                version = "1.9.6",
+                version = "1.9.7",
             },
             capabilities = new
             {
