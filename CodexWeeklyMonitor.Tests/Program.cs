@@ -1882,7 +1882,7 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
         Equal("AI TOKEN 用量监控", mainWindow.Title);
         var versionText = mainWindow.FindName("AppVersionText") as TextBlock
             ?? throw new Exception("主窗口没有显示版本号。");
-        Equal("v1.9.7", versionText.Text);
+        Equal("v1.9.8", versionText.Text);
         var updatedText = mainWindow.FindName("UpdatedText") as TextBlock
             ?? throw new Exception("主窗口没有更新时间。");
         var versionBorder = VisualTreeHelper.GetParent(versionText) as Border

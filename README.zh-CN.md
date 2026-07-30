@@ -97,8 +97,8 @@ dotnet publish CodexWeeklyMonitor\CodexWeeklyMonitor.csproj -c Release -r win-x6
   -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
 ```
 
-发布供在线更新识别的 Release 时，Tag 与项目版本应一致（例如 `v1.9.7`），资产命名为
-`AiTokenMonitor-1.9.7.exe`。GitHub 生成的 SHA-256 摘要会被客户端用于安装前校验。
+发布供在线更新识别的 Release 时，Tag 与项目版本应一致（例如 `v1.9.8`），资产命名为
+`AiTokenMonitor-1.9.8.exe`。GitHub 生成的 SHA-256 摘要会被客户端用于安装前校验。
 
 ## 许可证
 
