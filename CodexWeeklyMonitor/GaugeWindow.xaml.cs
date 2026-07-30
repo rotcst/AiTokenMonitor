@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using CodexWeeklyMonitor.Controls;
+using CodexWeeklyMonitor.Models;
 using CodexWeeklyMonitor.Services;
 using Point = System.Windows.Point;
 
@@ -8,7 +9,7 @@ namespace CodexWeeklyMonitor;
 
 /// <summary>
 /// The compact "orb" mode: a small circular racing-style gauge showing Codex and Claude usage at a
-/// glance. Double-clicking it asks the main window to restore; dragging moves it.
+/// glance. Clicking either half switches that provider's quota window; dragging moves the orb.
 /// </summary>
 public partial class GaugeWindow : Window
 {
@@ -39,7 +40,7 @@ public partial class GaugeWindow : Window
         GaugeVersionMenuItem.Header = AppVersion.Display;
     }
 
-    /// <summary>Raised when the user double-clicks the orb to return to the full window.</summary>
+    /// <summary>Raised when the orb's context menu asks to return to the full window.</summary>
     public event EventHandler? RestoreRequested;
 
     /// <summary>Raised when the orb menu asks the owner to check GitHub Releases.</summary>
@@ -48,8 +49,12 @@ public partial class GaugeWindow : Window
     /// <summary>Keeps the full card's persisted topmost preference in sync with the orb menu.</summary>
     public event Action<bool>? TopmostChangedRequested;
 
-    public void SetValues(int? codexPercent, int? claudePercent) =>
-        _gauge.Update(codexPercent, claudePercent);
+    public void SetWindows(
+        RateLimitWindow? codexFiveHour,
+        RateLimitWindow? codexWeekly,
+        RateLimitWindow? claudeFiveHour,
+        RateLimitWindow? claudeWeekly) =>
+        _gauge.Update(codexFiveHour, codexWeekly, claudeFiveHour, claudeWeekly);
 
     /// <summary>
     /// Positions the visible orb at the requested screen coordinate while keeping the transparent
@@ -66,13 +71,13 @@ public partial class GaugeWindow : Window
 
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount == 2)
+        if (e.LeftButton != MouseButtonState.Pressed)
         {
-            e.Handled = true;
-            RestoreRequested?.Invoke(this, EventArgs.Empty);
             return;
         }
 
+        var providerPoint = e.GetPosition(_gauge);
+        var dragStart = GetOrbTopLeft();
         try
         {
             DragMove();
@@ -81,7 +86,19 @@ public partial class GaugeWindow : Window
         {
             // The button may be released between the event and DragMove.
         }
+
+        var dragEnd = GetOrbTopLeft();
+        if (e.ClickCount == 1 &&
+            IsClickGesture(dragStart, dragEnd) &&
+            _gauge.ToggleProviderAt(providerPoint))
+        {
+            e.Handled = true;
+        }
     }
+
+    internal static bool IsClickGesture(Point start, Point end) =>
+        Math.Abs(end.X - start.X) < SystemParameters.MinimumHorizontalDragDistance &&
+        Math.Abs(end.Y - start.Y) < SystemParameters.MinimumVerticalDragDistance;
 
     private void RestoreMenuItem_Click(object sender, RoutedEventArgs e) =>
         RestoreRequested?.Invoke(this, EventArgs.Empty);

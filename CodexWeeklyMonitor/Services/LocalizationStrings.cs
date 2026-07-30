@@ -141,7 +141,7 @@ internal static class Strings
         ["update.installErrorDetail"] = ["更新安装失败：{0}", "Update installation failed: {0}", "업데이트 설치 실패: {0}"],
 
         // Gauge / orb mode
-        ["gauge.restoreHint"] = ["双击恢复主窗口", "Double-click to restore", "더블클릭하여 복원"],
+        ["gauge.switchHint"] = ["单击左右区域分别切换 5 小时/周额度；拖动可移动", "Click either side to switch 5-hour/weekly quota; drag to move", "좌우 영역을 클릭해 5시간/주간 한도를 전환하고 드래그해 이동"],
 
         // Tray status lines
         ["tray.weeklyUnknown"] = ["{0}：周额度未知", "{0}: weekly unknown", "{0}: 주간 한도 미상"],

@@ -902,14 +902,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Double-click anywhere on the card (except buttons) collapses to the gauge orb.
-        if (e.ClickCount == 2)
-        {
-            e.Handled = true;
-            EnterGaugeMode();
-            return;
-        }
-
         try
         {
             DragMove();
@@ -984,24 +976,15 @@ public partial class MainWindow : Window
 
     internal GaugeWindow? GaugeWindowForTesting => _gaugeWindow;
 
-    /// <summary>Feeds the orb each provider's remaining quota (the water level), 5-hour window if present.</summary>
+    /// <summary>Feeds both selectable quota windows to each side of the orb.</summary>
     private void PushGaugeValues()
     {
-        _gaugeWindow?.SetValues(
-            GaugeRemainingPercent(_currentSnapshot?.RateLimits.FiveHour, _currentSnapshot?.RateLimits.Weekly),
-            GaugeRemainingPercent(_claudeSnapshot?.FiveHour, _claudeSnapshot?.Weekly));
+        _gaugeWindow?.SetWindows(
+            _currentSnapshot?.RateLimits.FiveHour,
+            _currentSnapshot?.RateLimits.Weekly,
+            _claudeSnapshot?.FiveHour,
+            _claudeSnapshot?.Weekly);
     }
-
-    /// <summary>The window the orb reflects: the 5-hour one if present, else weekly (Codex's current shape).</summary>
-    internal static int? GaugeUsedPercent(RateLimitWindow? fiveHour, RateLimitWindow? weekly) =>
-        (fiveHour ?? weekly)?.UsedPercent;
-
-    /// <summary>
-    /// Remaining quota for the orb's water line: the inverse of <see cref="GaugeUsedPercent"/>, so a
-    /// full tank is 100% (fresh) and a dry tank is 0% (exhausted). Null when there is no window at all.
-    /// </summary>
-    internal static int? GaugeRemainingPercent(RateLimitWindow? fiveHour, RateLimitWindow? weekly) =>
-        GaugeUsedPercent(fiveHour, weekly) is { } used ? 100 - Math.Clamp(used, 0, 100) : null;
 
     private static bool IsInsideButton(DependencyObject? element)
     {

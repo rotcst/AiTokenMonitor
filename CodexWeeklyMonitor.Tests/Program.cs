@@ -12,6 +12,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Threading;
 using CodexWeeklyMonitor;
+using CodexWeeklyMonitor.Controls;
 using CodexWeeklyMonitor.Models;
 using CodexWeeklyMonitor.Services;
 using Application = System.Windows.Application;
@@ -1502,23 +1503,73 @@ Run("重置时间显示本地月日和时分", () =>
     Equal("7月29日 14:30 重置", MainWindow.FormatResetTime(resetAt));
 });
 
-Run("仪表盘水位取剩余额度,5 小时优先否则周额度", () =>
+RunSta("悬浮球左右区域独立切换 5 小时和周额度", () =>
 {
-    var fiveHour = new RateLimitWindow(44, DateTimeOffset.Now, 300);
-    var weekly = new RateLimitWindow(89, DateTimeOffset.Now, 10_080);
+    var now = new DateTimeOffset(2026, 7, 30, 12, 0, 0, TimeSpan.Zero);
+    var gauge = new GaugeControl(() => now);
+    var codexFiveHour = new RateLimitWindow(44, now.AddHours(4).AddMinutes(30), 300);
+    var codexWeekly = new RateLimitWindow(89, now.AddDays(6).AddHours(2), 10_080);
+    var claudeFiveHour = new RateLimitWindow(25, now.AddMinutes(47), 300);
+    var claudeWeekly = new RateLimitWindow(60, now.AddDays(3).AddHours(4), 10_080);
 
-    // The reflected window: 5-hour wins when present, else weekly (Codex's current shape).
-    Equal<int?>(44, MainWindow.GaugeUsedPercent(fiveHour, weekly));
-    Equal<int?>(89, MainWindow.GaugeUsedPercent(null, weekly));
-    Equal<int?>(null, MainWindow.GaugeUsedPercent(null, null));
+    gauge.Update(codexFiveHour, codexWeekly, claudeFiveHour, claudeWeekly);
+    Equal(GaugeQuotaPeriod.FiveHour, gauge.CodexPeriod);
+    Equal(GaugeQuotaPeriod.FiveHour, gauge.ClaudePeriod);
+    Equal("CODEX", gauge.CodexTitleText);
+    Equal("CLAUDE", gauge.ClaudeTitleText);
+    Equal("56%", gauge.CodexPercentText);
+    Equal("75%", gauge.ClaudePercentText);
+    Equal("5H · 4h 30m", gauge.CodexResetText);
+    Equal("5H · 47m", gauge.ClaudeResetText);
 
-    // Water line = remaining, i.e. 100 - used, so a full tank reads 100% and a dry tank 0%.
-    Equal<int?>(56, MainWindow.GaugeRemainingPercent(fiveHour, weekly));
-    Equal<int?>(11, MainWindow.GaugeRemainingPercent(null, weekly));
-    Equal<int?>(null, MainWindow.GaugeRemainingPercent(null, null));
-    // Fully consumed -> empty tank; untouched -> full tank.
-    Equal<int?>(0, MainWindow.GaugeRemainingPercent(new RateLimitWindow(100, DateTimeOffset.Now, 300), null));
-    Equal<int?>(100, MainWindow.GaugeRemainingPercent(new RateLimitWindow(0, DateTimeOffset.Now, 300), null));
+    gauge.ToggleProvider(GaugeProvider.Codex);
+    Equal(GaugeQuotaPeriod.Weekly, gauge.CodexPeriod);
+    Equal(GaugeQuotaPeriod.FiveHour, gauge.ClaudePeriod);
+    Equal("11%", gauge.CodexPercentText);
+    Equal("75%", gauge.ClaudePercentText);
+    Equal("W · 6d 2h", gauge.CodexResetText);
+
+    gauge.ToggleProvider(GaugeProvider.Claude);
+    Equal(GaugeQuotaPeriod.Weekly, gauge.ClaudePeriod);
+    Equal("40%", gauge.ClaudePercentText);
+    Equal("W · 3d 4h", gauge.ClaudeResetText);
+
+    now = now.AddHours(1);
+    gauge.RefreshCountdowns();
+    Equal("W · 6d 1h", gauge.CodexResetText);
+    Equal("W · 3d 3h", gauge.ClaudeResetText);
+
+    Equal(GaugeProvider.Codex, GaugeControl.ProviderAt(new System.Windows.Point(10, 58)));
+    Equal(GaugeProvider.Claude, GaugeControl.ProviderAt(new System.Windows.Point(106, 58)));
+    Equal<GaugeProvider?>(null, GaugeControl.ProviderAt(new System.Windows.Point(0, 0)));
+    Equal("--", GaugeControl.FormatResetCountdown(null, now));
+    Equal("0m", GaugeControl.FormatResetCountdown(now, now));
+
+    gauge.Measure(new System.Windows.Size(160, 160));
+    gauge.Arrange(new System.Windows.Rect(0, 0, 160, 160));
+    gauge.UpdateLayout();
+    var texts = FindVisualChildren<TextBlock>(gauge).ToArray();
+    var codexTitle = texts.Single(text => text.Text == "CODEX");
+    var codexPercent = texts.Single(text => text.Text == "11%");
+    var codexReset = texts.Single(text => text.Text == "W · 6d 1h");
+    if (codexTitle.Margin.Top >= codexPercent.Margin.Top ||
+        codexReset.Margin.Top <= codexPercent.Margin.Top)
+    {
+        throw new Exception("悬浮球标题、百分比和重置倒计时的上下顺序不正确。");
+    }
+
+    Equal(
+        true,
+        GaugeWindow.IsClickGesture(
+            new System.Windows.Point(100, 100),
+            new System.Windows.Point(101, 101)));
+    Equal(
+        false,
+        GaugeWindow.IsClickGesture(
+            new System.Windows.Point(100, 100),
+            new System.Windows.Point(
+                100 + SystemParameters.MinimumHorizontalDragDistance,
+                100)));
 });
 
 Run("Codex 旧额度在卡片提示和托盘中带陈旧标记", () =>
@@ -1542,14 +1593,27 @@ Run("Codex 旧额度在卡片提示和托盘中带陈旧标记", () =>
 
 RunSta("液面球渲染各种剩余取值不抛异常", () =>
 {
-    var gauge = new CodexWeeklyMonitor.Controls.GaugeControl();
+    var gauge = new GaugeControl();
     Equal(116d, gauge.Width);
     Equal(116d, gauge.Height);
-    Equal(116d, CodexWeeklyMonitor.Controls.GaugeControl.Diameter);
-    gauge.Update(97, 68);   // remaining percentages
-    gauge.Update(null, null);
-    gauge.Update(0, 100);   // dry tank / full tank
-    gauge.Update(150, -5);  // clamped, must not throw
+    Equal(116d, GaugeControl.Diameter);
+    var now = DateTimeOffset.Now;
+    gauge.Update(
+        new RateLimitWindow(3, now.AddHours(4), 300),
+        new RateLimitWindow(32, now.AddDays(5), 10_080),
+        null,
+        null);
+    gauge.Update(null, null, null, null);
+    gauge.Update(
+        new RateLimitWindow(100, now, 300),
+        null,
+        new RateLimitWindow(0, now, 300),
+        null);
+    gauge.Update(
+        new RateLimitWindow(150, now, 300),
+        null,
+        new RateLimitWindow(-5, now, 300),
+        null);
     gauge.Measure(new System.Windows.Size(160, 160));
     gauge.Arrange(new System.Windows.Rect(0, 0, 160, 160));
 });
@@ -1559,7 +1623,12 @@ RunSta("液面球缩小后阴影仍不会被窗口裁剪", () =>
     var gaugeWindow = new GaugeWindow();
     try
     {
-        gaugeWindow.SetValues(13, 65);
+        var now = DateTimeOffset.Now;
+        gaugeWindow.SetWindows(
+            new RateLimitWindow(87, now.AddHours(4), 300),
+            new RateLimitWindow(20, now.AddDays(5), 10_080),
+            new RateLimitWindow(35, now.AddHours(3), 300),
+            new RateLimitWindow(55, now.AddDays(4), 10_080));
         gaugeWindow.Show();
         gaugeWindow.UpdateLayout();
         Equal(118d, GaugeWindow.OrbDiameter);
@@ -1603,6 +1672,11 @@ RunSta("液面球缩小后阴影仍不会被窗口裁剪", () =>
         var updateItem = (MenuItem)gaugeWindow.FindName("GaugeCheckUpdatesMenuItem");
         var topmostItem = (MenuItem)gaugeWindow.FindName("GaugeTopmostMenuItem");
         var versionItem = (MenuItem)gaugeWindow.FindName("GaugeVersionMenuItem");
+        var restoreItem = (MenuItem)gaugeWindow.FindName("GaugeRestoreMenuItem");
+        var restoreRequested = false;
+        gaugeWindow.RestoreRequested += (_, _) => restoreRequested = true;
+        restoreItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, restoreItem));
+        Equal(true, restoreRequested);
         var updateRequested = false;
         gaugeWindow.UpdateRequested += (_, _) => updateRequested = true;
         updateItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, updateItem));
@@ -1925,8 +1999,8 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             Loc.SetLanguage(AppLanguage.Chinese);
         }
 
-        // The full card and orb keep independent coordinates across repeated double-click-style
-        // switches. Moving one surface must never drag the other surface's saved position along.
+        // The full card and orb keep independent coordinates across repeated menu-driven switches.
+        // Moving one surface must never drag the other surface's saved position along.
         mainWindow.Left = 310d;
         mainWindow.Top = 170d;
         mainWindow.UpdateLayout();
