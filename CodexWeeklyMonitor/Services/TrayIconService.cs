@@ -109,14 +109,14 @@ internal sealed class TrayIconService : ITrayIconService
         };
         _menu.Items.AddRange(
         [
-            _showItem,
-            _refreshItem,
-            _updateItem,
-            CreateSeparator(),
             _codexStatusItem,
             _claudeStatusItem,
             CreateSeparator(),
+            _showItem,
+            _refreshItem,
+            CreateSeparator(),
             _languageItem,
+            _updateItem,
             CreateSeparator(),
             _exitItem,
         ]);

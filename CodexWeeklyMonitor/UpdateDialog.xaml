@@ -80,7 +80,6 @@
                     <ColumnDefinition Width="34" />
                     <ColumnDefinition Width="12" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="28" />
                 </Grid.ColumnDefinitions>
                 <Border Width="34"
                         Height="34"
@@ -105,20 +104,6 @@
                                FontSize="10.5"
                                Foreground="#FF8D98A8" />
                 </StackPanel>
-                <Button x:Name="CloseButton"
-                        Grid.Column="3"
-                        Width="28"
-                        Height="28"
-                        Padding="0"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Foreground="#FF9CA7B7"
-                        Cursor="Hand"
-                        Click="CloseButton_Click">
-                    <TextBlock Text="&#xE8BB;"
-                               FontFamily="Segoe Fluent Icons"
-                               FontSize="12" />
-                </Button>
             </Grid>
 
             <TextBlock x:Name="MessageText"

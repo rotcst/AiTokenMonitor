@@ -392,9 +392,7 @@ public partial class MainWindow : Window
         StatusDot.Fill = isStale ? DangerBrush : GetUsageBrush(observedUsage);
         ConnectionText.Text = isStale
             ? Loc.T("conn.stale")
-            : snapshot.Detail?.Source is { } source
-                ? Loc.T("conn.liveWithSource", Loc.T(source))
-                : Loc.T("conn.live");
+            : Loc.T("conn.codexLive");
         UpdatedText.Text = isStale
             ? Loc.T("time.stale", TimeStamp(snapshot.FetchedAt))
             : Loc.T("time.updated", TimeStamp(snapshot.FetchedAt));
@@ -748,7 +746,10 @@ public partial class MainWindow : Window
             : $"{provider} · {FormatPlanName(plan)}";
         return weekly is null
             ? Loc.T("tray.weeklyUnknown", head)
-            : Loc.T(isStale ? "tray.weeklyUsedStale" : "tray.weeklyUsed", head, weekly.UsedPercent);
+            : Loc.T(
+                isStale ? "tray.weeklyRemainingStale" : "tray.weeklyRemaining",
+                head,
+                weekly.RemainingPercent);
     }
 
     internal static string FormatWeeklyTooltip(RateLimitWindow? window, bool isStale = false)
@@ -1239,7 +1240,7 @@ public partial class MainWindow : Window
                 languageItem.Items.Add(child);
             }
 
-            // Sits just above the trailing exit/hide actions.
+            // The update action is deliberately last; language sits immediately above it.
             var insertAt = Math.Max(0, menu.Items.Count - 1);
             menu.Items.Insert(insertAt, languageItem);
         }
@@ -1293,16 +1294,6 @@ public partial class MainWindow : Window
     private void MinimizeButton_Click(object sender, RoutedEventArgs e)
     {
         MinimizeToTaskbar();
-    }
-
-    private void MinimizeMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        MinimizeToTaskbar();
-    }
-
-    private void HideMenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        HideToTray();
     }
 
     /// <summary>Minimises like an ordinary window; the taskbar button stays put.</summary>

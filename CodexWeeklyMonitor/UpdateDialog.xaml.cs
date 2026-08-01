@@ -95,7 +95,6 @@ public partial class UpdateDialog : Window
         _downloading = true;
         PrimaryButton.IsEnabled = false;
         SecondaryButton.IsEnabled = false;
-        CloseButton.IsEnabled = false;
         ProgressPanel.Visibility = Visibility.Visible;
         MessageText.Text = Loc.T("update.downloading");
         ProgressText.Text = Loc.T("update.progress", 0);
@@ -134,14 +133,11 @@ public partial class UpdateDialog : Window
             PrimaryButton.Content = Loc.T("update.retry");
             PrimaryButton.IsEnabled = true;
             SecondaryButton.IsEnabled = true;
-            CloseButton.IsEnabled = true;
             _downloading = false;
         }
     }
 
     private void SecondaryButton_Click(object sender, RoutedEventArgs e) => Close();
-
-    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

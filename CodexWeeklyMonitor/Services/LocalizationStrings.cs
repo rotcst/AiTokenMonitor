@@ -26,12 +26,11 @@ internal static class Strings
         ["conn.connecting"] = ["正在连接", "Connecting", "연결 중"],
         ["conn.reading"] = ["正在读取", "Reading", "읽는 중"],
         ["conn.readingClaude"] = ["正在读取 Claude", "Reading Claude", "Claude 읽는 중"],
-        ["conn.live"] = ["实时监控中", "Live", "실시간 모니터링"],
-        ["conn.liveWithSource"] = ["实时监控中 · {0}", "Live · {0}", "실시간 · {0}"],
+        ["conn.codexLive"] = ["CODEX实时监控中", "CODEX live monitoring", "CODEX 실시간 모니터링"],
         ["conn.readingCodex"] = ["正在读取 Codex", "Reading Codex", "Codex 읽는 중"],
         ["conn.codexFailed"] = ["Codex 连接失败", "Codex connection failed", "Codex 연결 실패"],
         ["conn.codexLocal"] = ["Codex 本机统计", "Codex local stats", "Codex 로컬 통계"],
-        ["conn.claudeLive"] = ["Claude 实时监控中", "Claude live", "Claude 실시간"],
+        ["conn.claudeLive"] = ["CLAUDE实时监控中", "CLAUDE live monitoring", "CLAUDE 실시간 모니터링"],
         ["conn.claudeUpdateFailed"] = ["Claude 更新暂时失败", "Claude update failed", "Claude 업데이트 실패"],
         ["conn.readingClaudeQuota"] = ["正在读取 Claude 额度", "Reading Claude quota", "Claude 한도 읽는 중"],
         ["conn.claudeQuotaFailed"] = ["Claude 额度读取失败", "Claude quota read failed", "Claude 한도 읽기 실패"],
@@ -111,8 +110,6 @@ internal static class Strings
         ["menu.expandHistory"] = ["展开逐日 Token 历史", "Show daily token history", "일별 토큰 기록 표시"],
         ["menu.collapseHistory"] = ["收起逐日 Token 历史", "Hide daily token history", "일별 토큰 기록 숨기기"],
         ["menu.topmost"] = ["始终置顶", "Always on top", "항상 위"],
-        ["menu.minimizeTaskbar"] = ["最小化到任务栏", "Minimize to taskbar", "작업 표시줄로 최소화"],
-        ["menu.hideTray"] = ["隐藏到系统托盘", "Hide to tray", "트레이로 숨기기"],
         ["menu.showWindow"] = ["显示主窗口", "Show window", "창 표시"],
         ["menu.exit"] = ["退出程序", "Exit", "종료"],
         ["menu.language"] = ["语言 / Language", "Language / 语言", "언어 / Language"],
@@ -145,8 +142,8 @@ internal static class Strings
 
         // Tray status lines
         ["tray.weeklyUnknown"] = ["{0}：周额度未知", "{0}: weekly unknown", "{0}: 주간 한도 미상"],
-        ["tray.weeklyUsed"] = ["{0}：周额度已用 {1}%", "{0}: weekly {1}% used", "{0}: 주간 {1}% 사용"],
-        ["tray.weeklyUsedStale"] = ["{0}：周额度约已用 {1}%（旧数据）", "{0}: weekly ~{1}% used (stale)", "{0}: 주간 약 {1}% 사용 (이전 데이터)"],
+        ["tray.weeklyRemaining"] = ["{0}：周额度剩余 {1}%", "{0}: weekly {1}% remaining", "{0}: 주간 {1}% 남음"],
+        ["tray.weeklyRemainingStale"] = ["{0}：周额度约剩余 {1}%（旧数据）", "{0}: weekly ~{1}% remaining (stale)", "{0}: 주간 약 {1}% 남음 (이전 데이터)"],
 
         // Header button caption + arrow ({0} = ▾ / ▴)
         ["header.detailsArrow"] = ["详情 {0}", "Details {0}", "세부 {0}"],

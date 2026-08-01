@@ -1582,8 +1582,12 @@ Run("Codex 旧额度在卡片提示和托盘中带陈旧标记", () =>
         Equal("81%", MainWindow.FormatWeeklyTooltip(weekly));
         Equal("~81%", MainWindow.FormatWeeklyTooltip(weekly, isStale: true));
         Equal(
-            "Codex · Plus: weekly ~19% used (stale)",
+            "Codex · Plus: weekly ~81% remaining (stale)",
             MainWindow.FormatTrayStatusLine("Codex", "plus", weekly, isStale: true));
+        Loc.SetLanguage(AppLanguage.Chinese);
+        Equal(
+            "Codex · Plus：周额度剩余 81%",
+            MainWindow.FormatTrayStatusLine("Codex", "plus", weekly));
     }
     finally
     {
@@ -1923,6 +1927,24 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
         mainContextMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent, mainContextMenu));
         Equal("展开详情", (string)detailsMenuItem.Header);
         Equal("展开逐日 Token 历史", (string)historyMenuItem.Header);
+        var mainMenuLabels = mainContextMenu.Items
+            .OfType<MenuItem>()
+            .Select(item => item.Header as string)
+            .ToArray();
+        var expectedMainMenuLabels = new[]
+        {
+            "立即刷新",
+            "展开详情",
+            "展开逐日 Token 历史",
+            "切换到液面悬浮球",
+            "始终置顶",
+            "语言 / Language",
+            "检查版本更新",
+        };
+        if (!mainMenuLabels.SequenceEqual(expectedMainMenuLabels))
+        {
+            throw new Exception($"主窗口右键菜单顺序错误：{string.Join(" > ", mainMenuLabels)}");
+        }
 
         detailsMenuItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, detailsMenuItem));
         mainContextMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent, mainContextMenu));
@@ -1968,9 +1990,20 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
 
             nativeTray.UpdateMenuStatus("Codex status", "Claude status");
             var trayItems = trayMenu.Items.OfType<Forms.ToolStripMenuItem>().ToArray();
-            if (!trayItems.Any(item => item.Text == "Claude status"))
+            var expectedTrayOrder = new[]
             {
-                throw new Exception("托盘菜单没有显示 Claude 状态行。");
+                "Codex status",
+                "Claude status",
+                "显示主窗口",
+                "立即刷新",
+                "语言 / Language",
+                "检查版本更新",
+                "退出程序",
+            };
+            if (!trayItems.Select(item => item.Text).SequenceEqual(expectedTrayOrder))
+            {
+                throw new Exception(
+                    $"托盘菜单顺序错误：{string.Join(" > ", trayItems.Select(item => item.Text))}");
             }
 
             var refreshRequested = false;
@@ -1994,7 +2027,7 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
                 .Single(item => item.Tag is AppLanguage.English);
             nativeEnglishItem.PerformClick();
             Equal(AppLanguage.English, Loc.Current);
-            Equal("Show window", trayItems[0].Text);
+            Equal("Show window", trayItems[2].Text);
             Equal(true, nativeEnglishItem.Checked);
             Loc.SetLanguage(AppLanguage.Chinese);
         }
@@ -2063,6 +2096,28 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             ?? throw new Exception("未找到 Codex 切换标签。");
         var claudeTab = mainWindow.FindName("ClaudeProviderTab") as RadioButton
             ?? throw new Exception("未找到 Claude 切换标签。");
+        var codexFetchedAt = DateTimeOffset.Now;
+        var codexSnapshot = new CodexUsageSnapshot(
+            new AccountRateLimits(
+                FiveHour: new RateLimitWindow(24, codexFetchedAt.AddHours(2), 300),
+                Weekly: new RateLimitWindow(41, codexFetchedAt.AddDays(4), 10_080),
+                Credits: null,
+                AvailableResetCount: null,
+                PlanType: "plus",
+                FetchedAt: codexFetchedAt),
+            TokenUsage: null,
+            TokenUsageError: null,
+            FetchedAt: codexFetchedAt);
+        var applyCodexSnapshot = typeof(MainWindow).GetMethod(
+            "ApplySnapshot",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new Exception("未找到 Codex 快照渲染入口。");
+        applyCodexSnapshot.Invoke(mainWindow, [codexSnapshot]);
+        codexTab.IsChecked = true;
+        Equal(
+            "CODEX实时监控中",
+            ((TextBlock)mainWindow.FindName("ConnectionText")).Text);
+
         mainWindow.ApplyClaudeSnapshot(new ClaudeUsageSnapshot(
             new ClaudeAccountUsage(
                 new RateLimitWindow(24, DateTimeOffset.Now.AddHours(2), 300),
@@ -2101,6 +2156,9 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             FetchedAt: DateTimeOffset.Now));
         claudeTab.IsChecked = true;
         mainWindow.UpdateLayout();
+        Equal(
+            "CLAUDE实时监控中",
+            ((TextBlock)mainWindow.FindName("ConnectionText")).Text);
         var lifetimeCaption = mainWindow.FindName("LifetimeTokensCaption") as TextBlock
             ?? throw new Exception("未找到累计 Token 标签。");
         Equal("本机累计 TOKEN", lifetimeCaption.Text);
@@ -2309,9 +2367,10 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             throw new Exception("窗口右键菜单不应再提供退出程序。");
         }
 
-        if (!mainContextMenu.Items.OfType<MenuItem>().Any(item => (item.Header as string) == "最小化到任务栏"))
+        if (mainContextMenu.Items.OfType<MenuItem>().Any(item =>
+                (item.Header as string) is "最小化到任务栏" or "隐藏到系统托盘"))
         {
-            throw new Exception("窗口右键菜单缺少最小化到任务栏。");
+            throw new Exception("窗口右键菜单仍保留最小化或隐藏到托盘操作。");
         }
 
         trayIcon.RequestShow();
@@ -2336,6 +2395,49 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             mainWindow.Close();
         }
     }
+});
+
+RunSta("更新信息弹窗只保留知道了按钮并可正常关闭", () =>
+{
+    Exception? callbackError = null;
+    var opened = false;
+    var closed = false;
+    Dispatcher.CurrentDispatcher.BeginInvoke(
+        DispatcherPriority.ApplicationIdle,
+        new Action(() =>
+        {
+            try
+            {
+                var dialog = Application.Current.Windows
+                    .OfType<UpdateDialog>()
+                    .Single();
+                opened = true;
+                if (dialog.FindName("CloseButton") is not null)
+                {
+                    throw new Exception("版本更新弹窗仍显示右上角关闭按钮。");
+                }
+
+                var primaryButton = dialog.FindName("PrimaryButton") as Button
+                    ?? throw new Exception("版本更新弹窗缺少主按钮。");
+                Equal("知道了", primaryButton.Content as string);
+                dialog.Closed += (_, _) => closed = true;
+                primaryButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent, primaryButton));
+            }
+            catch (Exception exception)
+            {
+                callbackError = exception;
+                Application.Current.Windows.OfType<UpdateDialog>().FirstOrDefault()?.Close();
+            }
+        }));
+
+    UpdateDialog.ShowInformation(null, "当前已是最新版本。", topmost: false);
+    if (callbackError is not null)
+    {
+        throw callbackError;
+    }
+
+    Equal(true, opened);
+    Equal(true, closed);
 });
 
 Console.WriteLine(failed == 0
