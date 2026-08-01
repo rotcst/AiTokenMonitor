@@ -108,8 +108,8 @@ dotnet publish CodexWeeklyMonitor\CodexWeeklyMonitor.csproj -c Release -r win-x6
   -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
 ```
 
-온라인 업데이트와 호환되는 Release를 만들 때는 태그와 프로젝트 버전을 맞추고(예: `v1.9.8`),
-`AiTokenMonitor-1.9.8.exe`를 업로드하세요. 클라이언트는 GitHub가 생성한 SHA-256을 검증합니다.
+온라인 업데이트와 호환되는 Release를 만들 때는 태그와 프로젝트 버전을 맞추고(예: `v1.9.9`),
+`AiTokenMonitor-1.9.9.exe`를 업로드하세요. 클라이언트는 GitHub가 생성한 SHA-256을 검증합니다.
 
 ## 라이선스
 
