@@ -930,6 +930,7 @@ public partial class MainWindow : Window
         {
             _gaugeWindow = new GaugeWindow { Topmost = Topmost };
             _gaugeWindow.RestoreRequested += (_, _) => RunOnDispatcher(ExitGaugeMode);
+            _gaugeWindow.RefreshRequested += GaugeWindow_RefreshRequested;
             _gaugeWindow.UpdateRequested += GaugeWindow_UpdateRequested;
             _gaugeWindow.TopmostChangedRequested += GaugeWindow_TopmostChangedRequested;
         }
@@ -1422,6 +1423,11 @@ public partial class MainWindow : Window
     private void TrayIcon_UpdateRequested(object? sender, EventArgs e)
     {
         RunOnDispatcher(() => _ = CheckForUpdatesAsync(userInitiated: true));
+    }
+
+    private void GaugeWindow_RefreshRequested(object? sender, EventArgs e)
+    {
+        RunOnDispatcher(() => _ = RefreshUsageAsync(userInitiated: true));
     }
 
     private void GaugeWindow_UpdateRequested(object? sender, EventArgs e)

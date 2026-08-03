@@ -85,6 +85,15 @@
             <Grid.ContextMenu>
                 <ContextMenu Style="{DynamicResource ModernContextMenuStyle}"
                              Opened="GaugeContextMenu_Opened">
+                    <MenuItem x:Name="GaugeRefreshMenuItem"
+                              Header="{loc:Str menu.refresh}"
+                              Style="{DynamicResource ModernMenuItemStyle}"
+                              Click="RefreshMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M23 4v6h-6 M1 20v-6h6 M20.49 9A9 9 0 0 0 5.64 5.64L1 10 M3.51 15a9 9 0 0 0 14.85 3.36L23 14" />
+                        </MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem x:Name="GaugeRestoreMenuItem"
                               Header="{loc:Str menu.showWindow}"
                               Style="{DynamicResource ModernMenuItemStyle}"
@@ -94,16 +103,6 @@
                                   Data="M4 5h16v14H4z M4 9h16" />
                         </MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem x:Name="GaugeCheckUpdatesMenuItem"
-                              Header="{loc:Str menu.checkUpdates}"
-                              Style="{DynamicResource ModernMenuItemStyle}"
-                              Click="CheckUpdatesMenuItem_Click">
-                        <MenuItem.Icon>
-                            <Path Style="{DynamicResource MenuIconStyle}"
-                                  Data="M12 3v12 M7 10l5 5 5-5 M5 21h14" />
-                        </MenuItem.Icon>
-                    </MenuItem>
-                    <Separator Style="{DynamicResource ModernMenuSeparatorStyle}" />
                     <MenuItem x:Name="GaugeTopmostMenuItem"
                               Header="{loc:Str menu.topmost}"
                               Style="{DynamicResource ModernMenuItemAccentStyle}"
@@ -115,6 +114,15 @@
                         </MenuItem.Icon>
                     </MenuItem>
                     <Separator Style="{DynamicResource ModernMenuSeparatorStyle}" />
+                    <MenuItem x:Name="GaugeCheckUpdatesMenuItem"
+                              Header="{loc:Str menu.checkUpdates}"
+                              Style="{DynamicResource ModernMenuItemStyle}"
+                              Click="CheckUpdatesMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M12 3v12 M7 10l5 5 5-5 M5 21h14" />
+                        </MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem x:Name="GaugeVersionMenuItem"
                               Style="{DynamicResource ModernMenuItemStyle}"
                               IsEnabled="False" />

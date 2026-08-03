@@ -43,6 +43,9 @@ public partial class GaugeWindow : Window
     /// <summary>Raised when the orb's context menu asks to return to the full window.</summary>
     public event EventHandler? RestoreRequested;
 
+    /// <summary>Raised when the orb menu asks the owner to refresh usage now.</summary>
+    public event EventHandler? RefreshRequested;
+
     /// <summary>Raised when the orb menu asks the owner to check GitHub Releases.</summary>
     public event EventHandler? UpdateRequested;
 
@@ -99,6 +102,9 @@ public partial class GaugeWindow : Window
     internal static bool IsClickGesture(Point start, Point end) =>
         Math.Abs(end.X - start.X) < SystemParameters.MinimumHorizontalDragDistance &&
         Math.Abs(end.Y - start.Y) < SystemParameters.MinimumVerticalDragDistance;
+
+    private void RefreshMenuItem_Click(object sender, RoutedEventArgs e) =>
+        RefreshRequested?.Invoke(this, EventArgs.Empty);
 
     private void RestoreMenuItem_Click(object sender, RoutedEventArgs e) =>
         RestoreRequested?.Invoke(this, EventArgs.Empty);
