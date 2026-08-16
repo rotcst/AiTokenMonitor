@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
@@ -23,9 +24,7 @@ public sealed class ClaudeUsageMonitor : IDisposable
     private static readonly TimeSpan ActivityQuotaInterval = TimeSpan.FromSeconds(20);
 
     private readonly ConcurrentDictionary<string, byte> _pendingPaths = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, FileState> _observedFiles =
-        new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, IReadOnlyList<ClaudeTokenRecord>> _recordsByFile =
+    private readonly Dictionary<string, TranscriptFile> _transcripts =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly object _recordsGate = new();
     private readonly string _claudeHome;
@@ -47,8 +46,6 @@ public sealed class ClaudeUsageMonitor : IDisposable
     private Timer? _timer;
     private Timer? _quotaTimer;
     private ClaudeStatusUsage? _status;
-    private readonly Dictionary<string, ClaudeSessionState> _sessionByFile =
-        new(StringComparer.OrdinalIgnoreCase);
     private ClaudeSessionState? _session;
     private ClaudeAccountUsage? _account;
     private string? _accountError;
@@ -366,11 +363,9 @@ public sealed class ClaudeUsageMonitor : IDisposable
                 {
                     lock (_recordsGate)
                     {
-                        changed |= _recordsByFile.Remove(path);
-                        _sessionByFile.Remove(path);
+                        changed |= _transcripts.Remove(path);
                     }
 
-                    _observedFiles.TryRemove(path, out _);
                     continue;
                 }
 
@@ -384,30 +379,24 @@ public sealed class ClaudeUsageMonitor : IDisposable
                 // several times per append. Re-reading a file whose size and timestamp are
                 // unchanged re-materialises its every line as a string for nothing — on a large
                 // history that was the entire corpus, every minute, whether or not Claude ran.
-                if (_observedFiles.TryGetValue(path, out var observed) && observed == readState)
+                if (_transcripts.TryGetValue(path, out var transcript) && transcript.Matches(readState))
                 {
                     continue;
                 }
 
                 try
                 {
-                    var records = ParseTranscriptFile(path, out var sessionState);
                     lock (_recordsGate)
                     {
-                        _recordsByFile[path] = records;
-                        if (sessionState is null)
+                        if (!_transcripts.TryGetValue(path, out transcript))
                         {
-                            _sessionByFile.Remove(path);
+                            transcript = new TranscriptFile();
+                            _transcripts[path] = transcript;
                         }
-                        else
-                        {
-                            _sessionByFile[path] = sessionState;
-                        }
+
+                        ReadAppendedRecords(path, transcript, readState);
                     }
 
-                    // The state captured before the read is what gets remembered: if Claude appended
-                    // while the file was being parsed, the next scan sees a difference and retries.
-                    _observedFiles[path] = readState;
                     changed = true;
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -421,10 +410,14 @@ public sealed class ClaudeUsageMonitor : IDisposable
                 ClaudeTokenRecord[] allRecords;
                 lock (_recordsGate)
                 {
-                    allRecords = _recordsByFile.Values.SelectMany(records => records).ToArray();
+                    allRecords = _transcripts.Values
+                        .SelectMany(file => file.Records.Values)
+                        .ToArray();
                     // The newest turn across every project is the session the user is in right now.
-                    _session = _sessionByFile.Values
-                        .OrderByDescending(state => state.ObservedAt)
+                    _session = _transcripts.Values
+                        .Select(file => file.Session)
+                        .Where(session => session is not null)
+                        .OrderByDescending(session => session!.ObservedAt)
                         .FirstOrDefault();
                 }
 
@@ -563,18 +556,130 @@ public sealed class ClaudeUsageMonitor : IDisposable
         }
     }
 
-    private static IReadOnlyList<ClaudeTokenRecord> ParseTranscriptFile(
-        string path,
-        out ClaudeSessionState? sessionState)
+    /// <summary>
+    /// Folds everything appended since the last pass into <paramref name="transcript"/>.
+    /// </summary>
+    /// <remarks>
+    /// A Claude transcript is append-only JSONL, so the bytes before the last consumed newline are
+    /// settled and never need reading again. Only an append re-reads anything, which is what keeps a
+    /// 57 MB session that is being written to right now from costing 57 MB of line strings on every
+    /// pass. A file that shrank was replaced rather than appended to, and starts over from zero.
+    ///
+    /// Byte offsets, not <see cref="StreamReader"/>, because the reader buffers ahead and cannot say
+    /// where a line ended. That also allows the usage gate to run on raw UTF-8: a 2.6 MB tool-result
+    /// line is rejected without ever becoming a string.
+    /// </remarks>
+    private static void ReadAppendedRecords(string path, TranscriptFile transcript, FileState observed)
     {
-        var fallbackTimestamp = new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero);
+        if (observed.Length < transcript.ParsedOffset)
+        {
+            transcript.Reset();
+        }
+
+        var fallbackTimestamp = new DateTimeOffset(observed.LastWriteTimeUtc, TimeSpan.Zero);
         using var stream = new FileStream(
             path,
             FileMode.Open,
             FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete);
-        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-        return ClaudeTranscriptParser.ParseReader(reader, path, fallbackTimestamp, out sessionState);
+
+        var position = transcript.ParsedOffset;
+        stream.Seek(position, SeekOrigin.Begin);
+
+        var chunk = ArrayPool<byte>.Shared.Rent(64 * 1024);
+        var line = new ArrayBufferWriter<byte>(4 * 1024);
+        var session = transcript.Session;
+        try
+        {
+            int read;
+            while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
+            {
+                var searchFrom = 0;
+                while (searchFrom < read)
+                {
+                    var newline = Array.IndexOf(chunk, (byte)'\n', searchFrom, read - searchFrom);
+                    if (newline < 0)
+                    {
+                        // A partial trailing line: carry it, but do not advance past it. Claude may
+                        // still be midway through writing this record.
+                        line.Write(chunk.AsSpan(searchFrom, read - searchFrom));
+                        break;
+                    }
+
+                    line.Write(chunk.AsSpan(searchFrom, newline - searchFrom));
+                    transcript.LineNumber++;
+                    ConsumeLine(
+                        line.WrittenSpan,
+                        path,
+                        transcript,
+                        transcript.LineNumber,
+                        fallbackTimestamp,
+                        ref session);
+                    line.ResetWrittenCount();
+                    searchFrom = newline + 1;
+                    transcript.ParsedOffset = position + searchFrom;
+                }
+
+                position += read;
+            }
+
+            if (line.WrittenCount > 0)
+            {
+                // A final record with no terminating newline. Parse it so a transcript that never
+                // ends in one still reports its last turn, but leave ParsedOffset behind it: if this
+                // was a half-written record, the next pass re-reads it once Claude finishes. Re-reads
+                // are harmless because records deduplicate on message id, and the line number is not
+                // committed either, so the fallback key stays stable across those retries.
+                ConsumeLine(
+                    line.WrittenSpan,
+                    path,
+                    transcript,
+                    transcript.LineNumber + 1,
+                    fallbackTimestamp,
+                    ref session);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(chunk);
+        }
+
+        transcript.Session = session;
+        // The state sampled before the read is what gets remembered: if Claude appended while the
+        // file was being parsed, the next scan sees a difference and picks up the remainder.
+        transcript.Observed = observed;
+    }
+
+    private static void ConsumeLine(
+        ReadOnlySpan<byte> line,
+        string path,
+        TranscriptFile transcript,
+        int lineNumber,
+        DateTimeOffset fallbackTimestamp,
+        ref ClaudeSessionState? session)
+    {
+        if (lineNumber == 1 && line.StartsWith(Utf8Bom))
+        {
+            line = line[Utf8Bom.Length..];
+        }
+
+        if (line.EndsWith("\r"u8))
+        {
+            line = line[..^1];
+        }
+
+        if (line.IndexOf(ClaudeTranscriptParser.UsagePropertyUtf8) < 0)
+        {
+            return;
+        }
+
+        ClaudeTranscriptParser.Accumulate(
+            Encoding.UTF8.GetString(line),
+            path,
+            lineNumber,
+            fallbackTimestamp,
+            transcript.Records,
+            ref session);
     }
 
     private bool IsTranscriptFile(string path)
@@ -669,9 +774,43 @@ public sealed class ClaudeUsageMonitor : IDisposable
         _timer = null;
         _quotaTimer = null;
         _transcriptWatchers.Clear();
-        _observedFiles.Clear();
+        lock (_recordsGate)
+        {
+            _transcripts.Clear();
+        }
+
         _bridgeWatcher = null;
     }
 
     private readonly record struct FileState(long Length, DateTime LastWriteTimeUtc);
+
+    private static ReadOnlySpan<byte> Utf8Bom => [0xEF, 0xBB, 0xBF];
+
+    /// <summary>One transcript's accumulated view, carried across passes so appends stay cheap.</summary>
+    private sealed class TranscriptFile
+    {
+        public Dictionary<string, ClaudeTokenRecord> Records { get; private set; } =
+            new(StringComparer.Ordinal);
+
+        public ClaudeSessionState? Session { get; set; }
+
+        /// <summary>Just past the last complete line consumed; a partial tail is left for next time.</summary>
+        public long ParsedOffset { get; set; }
+
+        /// <summary>Only used for the fallback record key, so it has to keep counting across passes.</summary>
+        public int LineNumber { get; set; }
+
+        public FileState Observed { get; set; }
+
+        public bool Matches(FileState state) => Observed == state;
+
+        public void Reset()
+        {
+            Records = new Dictionary<string, ClaudeTokenRecord>(StringComparer.Ordinal);
+            Session = null;
+            ParsedOffset = 0;
+            LineNumber = 0;
+            Observed = default;
+        }
+    }
 }

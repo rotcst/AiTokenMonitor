@@ -36,7 +36,7 @@ internal static class ClaudeTranscriptParser
     {
         var records = new Dictionary<string, ClaudeTokenRecord>(StringComparer.Ordinal);
         var lineNumber = 0;
-        sessionState = null;
+        var state = sessionState = null;
         while (reader.ReadLine() is { } line)
         {
             lineNumber++;
@@ -48,26 +48,48 @@ internal static class ClaudeTranscriptParser
                 continue;
             }
 
-            var parsed = ParseUsageLine(line, sourceKey, lineNumber, fallbackTimestamp);
-            if (parsed.State is { } state &&
-                (sessionState is null || state.ObservedAt >= sessionState.ObservedAt))
-            {
-                sessionState = state;
-            }
-
-            if (parsed.Record is not { } record)
-            {
-                continue;
-            }
-
-            if (!records.TryGetValue(record.Key, out var existing) || record.Tokens > existing.Tokens)
-            {
-                records[record.Key] = record;
-            }
+            Accumulate(line, sourceKey, lineNumber, fallbackTimestamp, records, ref state);
         }
 
+        sessionState = state;
         return records.Values.ToArray();
     }
+
+    /// <summary>
+    /// Folds one already-filtered line into an accumulating per-file view.
+    /// </summary>
+    /// <remarks>
+    /// Shared with the incremental reader so a file parsed in one pass and the same file parsed in
+    /// several appended chunks cannot disagree about deduplication or which turn is the newest.
+    /// </remarks>
+    internal static void Accumulate(
+        string line,
+        string sourceKey,
+        int lineNumber,
+        DateTimeOffset fallbackTimestamp,
+        Dictionary<string, ClaudeTokenRecord> records,
+        ref ClaudeSessionState? sessionState)
+    {
+        var parsed = ParseUsageLine(line, sourceKey, lineNumber, fallbackTimestamp);
+        if (parsed.State is { } state &&
+            (sessionState is null || state.ObservedAt >= sessionState.ObservedAt))
+        {
+            sessionState = state;
+        }
+
+        if (parsed.Record is not { } record)
+        {
+            return;
+        }
+
+        if (!records.TryGetValue(record.Key, out var existing) || record.Tokens > existing.Tokens)
+        {
+            records[record.Key] = record;
+        }
+    }
+
+    /// <summary>The UTF-8 form of the gate above, for callers that filter before decoding.</summary>
+    internal static ReadOnlySpan<byte> UsagePropertyUtf8 => "\"usage\""u8;
 
     /// <summary>
     /// Reads the live model and context occupancy from one assistant turn. Context is what the

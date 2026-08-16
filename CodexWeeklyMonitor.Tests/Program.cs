@@ -2442,6 +2442,82 @@ RunSta("更新信息弹窗只保留知道了按钮并可正常关闭", () =>
     Equal(true, closed);
 });
 
+Run("Claude 会话追加后只读新增字节：不丢记录、不重复计数、半行不提交", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), "AiTokenMonitorTests", Guid.NewGuid().ToString("N"));
+    var claudeHome = Path.Combine(root, ".claude");
+    var projectDirectory = Path.Combine(claudeHome, "projects", "sample");
+    Directory.CreateDirectory(projectDirectory);
+    var sessionPath = Path.Combine(projectDirectory, "session.jsonl");
+
+    string Turn(string id, int input, int output) =>
+        """
+        {"type":"assistant","uuid":"@ID","timestamp":"@TS","message":{"id":"@ID","model":"claude-sonnet-5","usage":{"input_tokens":@IN,"output_tokens":@OUT}}}
+        """
+            .Replace("@ID", id)
+            .Replace("@TS", DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture))
+            .Replace("@IN", input.ToString(CultureInfo.InvariantCulture))
+            .Replace("@OUT", output.ToString(CultureInfo.InvariantCulture));
+
+    File.WriteAllText(sessionPath, Turn("m-1", 100, 20) + "\n");
+
+    ClaudeUsageSnapshot? latest = null;
+    using var monitor = new ClaudeUsageMonitor(
+        claudeHome: claudeHome,
+        bridgeDirectory: Path.Combine(root, "bridge"),
+        usageClient: null,
+        enableQuotaPolling: false);
+    monitor.UsageUpdated += snapshot => latest = snapshot;
+    monitor.Start();
+
+    long? Settle(long expected)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (latest?.TokenUsage?.LifetimeTokens == expected)
+            {
+                return expected;
+            }
+
+            Thread.Sleep(100);
+        }
+
+        return latest?.TokenUsage?.LifetimeTokens;
+    }
+
+    try
+    {
+        Equal<long?>(120L, Settle(120L));
+
+        // An append must add the new turn without re-counting the turn already folded in.
+        File.AppendAllText(sessionPath, Turn("m-2", 200, 30) + "\n");
+        Equal<long?>(350L, Settle(350L));
+
+        // Catching Claude mid-write must not commit a half record...
+        var third = Turn("m-3", 400, 5);
+        File.AppendAllText(sessionPath, third[..(third.Length / 2)]);
+        Thread.Sleep(2500);
+        Equal<long?>(350L, latest?.TokenUsage?.LifetimeTokens);
+
+        // ...and finishing it must count it exactly once, not twice.
+        File.AppendAllText(sessionPath, third[(third.Length / 2)..] + "\n");
+        Equal<long?>(755L, Settle(755L));
+
+        // A shorter file was replaced rather than appended to, so the view starts over.
+        File.WriteAllText(sessionPath, Turn("m-4", 7, 3) + "\n");
+        Equal<long?>(10L, Settle(10L));
+    }
+    finally
+    {
+        monitor.Dispose();
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+});
+
 Run("后台更新检查：新版本立刻提示，已拒绝的版本冷却期内不再打扰", () =>
 {
     var now = DateTimeOffset.UtcNow;
