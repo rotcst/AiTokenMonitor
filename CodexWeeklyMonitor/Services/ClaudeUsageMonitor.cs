@@ -13,6 +13,15 @@ public sealed class ClaudeUsageMonitor : IDisposable
     internal static readonly TimeSpan StatusMaxAge = TimeSpan.FromMinutes(10);
     internal static readonly TimeSpan SessionMaxAge = TimeSpan.FromMinutes(30);
 
+    /// <summary>
+    /// How recent an assistant turn has to be before it counts as "the quota just moved" rather
+    /// than history. Parsing a months-old transcript at startup must not look like activity.
+    /// </summary>
+    internal static readonly TimeSpan ActivityFreshness = TimeSpan.FromMinutes(2);
+
+    /// <summary>Floor between activity-triggered reads, so a rapid exchange is not one call a turn.</summary>
+    private static readonly TimeSpan ActivityQuotaInterval = TimeSpan.FromSeconds(20);
+
     private readonly ConcurrentDictionary<string, byte> _pendingPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, FileState> _observedFiles =
         new(StringComparer.OrdinalIgnoreCase);
@@ -50,6 +59,9 @@ public sealed class ClaudeUsageMonitor : IDisposable
     private int _fetchingQuota;
     private bool _publishedInitialSnapshot;
     private bool _forceRefresh;
+    private DateTimeOffset _lastHandledTurnAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _nextActivityQuotaAt = DateTimeOffset.MinValue;
+    private bool _quotaFetchPending;
     private bool _disposed;
 
     public ClaudeUsageMonitor(string? claudeHome = null, string? bridgeDirectory = null)
@@ -119,7 +131,12 @@ public sealed class ClaudeUsageMonitor : IDisposable
     /// Pulls the authoritative quota from Anthropic's usage endpoint. Failures are surfaced in the
     /// snapshot rather than thrown, so a flaky network never blanks out the token statistics.
     /// </summary>
-    private async Task FetchQuotaAsync(bool userInitiated = false)
+    /// <param name="force">
+    /// Set for a read the user asked for, or one a freshly written turn justifies. It skips the
+    /// routine spacing but never the rate-limit penalty, so neither repeated clicking nor a busy
+    /// session can dig the limit deeper.
+    /// </param>
+    private async Task FetchQuotaAsync(bool force = false)
     {
         if (_disposed || _usageClient is null)
         {
@@ -129,11 +146,15 @@ public sealed class ClaudeUsageMonitor : IDisposable
         // The window's refresh timer and this monitor's own timer both land on the same minute, and
         // Claude Code polls the same endpoint. Without this gate the app produced two calls per
         // tick and the endpoint started answering 429.
-        if (!_throttle.TryAcquire(DateTimeOffset.UtcNow, userInitiated) ||
+        if (!_throttle.TryAcquire(DateTimeOffset.UtcNow, force) ||
             Interlocked.Exchange(ref _fetchingQuota, 1) != 0)
         {
             return;
         }
+
+        // Every call that actually goes out restarts the activity floor, whatever triggered it, so
+        // a routine poll and a turn landing a moment later cannot both reach the endpoint.
+        _nextActivityQuotaAt = DateTimeOffset.UtcNow + ActivityQuotaInterval;
 
         try
         {
@@ -412,6 +433,8 @@ public sealed class ClaudeUsageMonitor : IDisposable
                     : ClaudeTranscriptParser.BuildAccountUsage(allRecords, DateTimeOffset.Now);
             }
 
+            TryFetchQuotaForActivity();
+
             if (_forceRefresh || File.Exists(_bridgePath))
             {
                 changed |= TryReadBridge();
@@ -439,6 +462,46 @@ public sealed class ClaudeUsageMonitor : IDisposable
         {
             Volatile.Write(ref _processing, 0);
         }
+    }
+
+    /// <summary>
+    /// Turns a freshly written assistant turn into an immediate quota read.
+    /// </summary>
+    /// <remarks>
+    /// Codex gets this for free — its app-server pushes <c>account/rateLimits/updated</c>. Claude's
+    /// usage endpoint has no such channel, but the transcript watcher is the next best thing: the
+    /// turn lands on disk within a second of finishing, and a finished turn is exactly when the
+    /// quota moved. Driving the read off that beats shortening the poll in both directions — the
+    /// number is seconds old while Claude is in use, and nothing is requested at all while it is
+    /// idle, where a shorter poll would have meant strictly more calls for no fresher a number.
+    /// </remarks>
+    private void TryFetchQuotaForActivity()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (_session is { } session && IsNewActivity(now, session.ObservedAt, _lastHandledTurnAt))
+        {
+            _lastHandledTurnAt = session.ObservedAt;
+            _quotaFetchPending = true;
+        }
+
+        // A turn that arrives inside the floor stays pending rather than being dropped, so the
+        // one-second loop picks it up as soon as the floor expires.
+        if (!_quotaFetchPending || now < _nextActivityQuotaAt)
+        {
+            return;
+        }
+
+        _quotaFetchPending = false;
+        _ = FetchQuotaAsync(force: true);
+    }
+
+    internal static bool IsNewActivity(
+        DateTimeOffset now,
+        DateTimeOffset turnObservedAt,
+        DateTimeOffset lastHandledTurnAt)
+    {
+        return turnObservedAt > lastHandledTurnAt &&
+               now - turnObservedAt <= ActivityFreshness;
     }
 
     private bool TryReadBridge()

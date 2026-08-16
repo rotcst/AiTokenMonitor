@@ -84,6 +84,15 @@ it with details from the official HTTP endpoints. If the app-server is unavailab
 is used as a fallback. A failed refresh keeps the last snapshot visibly marked as stale instead of
 presenting it as live data.
 
+**When quota refreshes.** Both sides are event-driven rather than tightly polled. Codex follows the
+`account/rateLimits/updated` notifications its app-server pushes. Claude's usage endpoint has no such
+channel, so the transcript is used as the signal instead: a turn hitting `*.jsonl` is exactly when the
+quota moved, and the watcher sees it within a second and reads immediately. The number is therefore
+seconds old **while you are using Claude**, and no request goes out at all **while you are not**. A
+three-minute routine poll backs it up (a window reset moves the number on its own), with a 20-second
+floor between event-driven reads. Everything stands down under rate limiting, which the card reports
+as "Rate limited · retry in N".
+
 ## Privacy
 
 - Access tokens are used **in memory only**, solely to call the official usage endpoints. They are

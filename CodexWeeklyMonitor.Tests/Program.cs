@@ -2442,6 +2442,29 @@ RunSta("更新信息弹窗只保留知道了按钮并可正常关闭", () =>
     Equal(true, closed);
 });
 
+Run("Claude 额度：刚写入的回合触发即时拉取，历史记录不触发", () =>
+{
+    var now = DateTimeOffset.UtcNow;
+    var never = DateTimeOffset.MinValue;
+
+    // A turn that just landed is exactly when the quota moved.
+    Equal(true, ClaudeUsageMonitor.IsNewActivity(now, now.AddSeconds(-2), never));
+
+    // Startup parses the whole history; an old turn must not look like activity.
+    Equal(false, ClaudeUsageMonitor.IsNewActivity(now, now.AddMinutes(-30), never));
+    Equal(
+        false,
+        ClaudeUsageMonitor.IsNewActivity(
+            now,
+            now - ClaudeUsageMonitor.ActivityFreshness.Add(TimeSpan.FromSeconds(1)),
+            never));
+
+    // The same turn seen again on the next one-second pass must not fire a second read.
+    var turn = now.AddSeconds(-2);
+    Equal(false, ClaudeUsageMonitor.IsNewActivity(now, turn, turn));
+    Equal(true, ClaudeUsageMonitor.IsNewActivity(now, turn.AddSeconds(1), turn));
+});
+
 // Only the pure helpers are covered: TrySetEnabled writes the real HKCU Run key, so exercising it
 // here would register the test host to start with Windows on the developer's own machine.
 Run("开机启动：命令行带引号，避免路径中的空格被截断", () =>
