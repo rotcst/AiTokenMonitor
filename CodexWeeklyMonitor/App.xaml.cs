@@ -32,6 +32,10 @@ public partial class App : System.Windows.Application
 
         UpdateInstaller.ScheduleCleanup(UpdateInstaller.GetCleanupPath(e.Args));
 
+        // Only a normally launched EXE reaches this line — the staged updater shut down above — so
+        // it is the safe place to point a stale auto-start entry back at the EXE that is running.
+        StartupRegistration.SyncRegisteredPath();
+
         _singleInstance = new SingleInstanceCoordinator();
         if (!_singleInstance.IsPrimary)
         {
@@ -42,8 +46,15 @@ public partial class App : System.Windows.Application
 
         var window = new MainWindow();
         MainWindow = window;
-        window.Show();
-        window.Activate();
+        if (StartupRegistration.IsAutostartLaunch(e.Args))
+        {
+            window.ShowStartingHiddenInTray();
+        }
+        else
+        {
+            window.Show();
+            window.Activate();
+        }
 
         _singleInstance.ActivationRequested += SingleInstance_ActivationRequested;
         _singleInstance.StartListening();

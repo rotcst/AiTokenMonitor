@@ -16,6 +16,12 @@ internal interface ITrayIconService : IDisposable
 
     event EventHandler? ExitRequested;
 
+    /// <summary>
+    /// Asks the owner to write the auto-start registration and answers with the state that actually
+    /// stuck, so a refused registry write cannot leave the tray menu ticked.
+    /// </summary>
+    event Func<bool, bool>? StartupToggleRequested;
+
     bool Visible { get; set; }
 
     string ToolTipText { get; set; }
@@ -50,6 +56,11 @@ internal sealed class TrayIconService : ITrayIconService
     private const string IconRefresh = "refresh";
     private const string IconUpdate = "update";
     private const string IconGlobe = "globe";
+    // The top-level strip runs with ShowCheckMargin off, so WinForms draws no tick for a checked
+    // item. The auto-start entry carries its state in the tag instead and the renderer lights the
+    // glyph and label up in the accent colour when it is on.
+    private const string IconStartup = "startup";
+    private const string IconStartupOn = "startup-on";
     private const string IconExit = "exit";
 
     private readonly DrawingIcon _icon;
@@ -61,6 +72,7 @@ internal sealed class TrayIconService : ITrayIconService
     private readonly Forms.ToolStripMenuItem _codexStatusItem;
     private readonly Forms.ToolStripMenuItem _claudeStatusItem;
     private readonly Forms.ToolStripMenuItem _languageItem;
+    private readonly Forms.ToolStripMenuItem _startupItem;
     private readonly Forms.ToolStripMenuItem _exitItem;
     private readonly ModernMenuRenderer _menuRenderer;
     private readonly Font _menuFont;
@@ -83,6 +95,8 @@ internal sealed class TrayIconService : ITrayIconService
         _codexStatusItem = CreateStatusItem();
         _claudeStatusItem = CreateStatusItem();
         _languageItem = new Forms.ToolStripMenuItem { Tag = IconGlobe };
+        _startupItem = CreateMenuItem(ToggleStartup);
+        _startupItem.Tag = IconStartup;
         _exitItem = CreateMenuItem(() => ExitRequested?.Invoke(this, EventArgs.Empty));
         _exitItem.Tag = IconExit;
 
@@ -115,6 +129,7 @@ internal sealed class TrayIconService : ITrayIconService
             _showItem,
             _refreshItem,
             CreateSeparator(),
+            _startupItem,
             _languageItem,
             _updateItem,
             CreateSeparator(),
@@ -145,6 +160,8 @@ internal sealed class TrayIconService : ITrayIconService
     public event EventHandler? UpdateRequested;
 
     public event EventHandler? ExitRequested;
+
+    public event Func<bool, bool>? StartupToggleRequested;
 
     public bool Visible
     {
@@ -235,6 +252,19 @@ internal sealed class TrayIconService : ITrayIconService
         UpdateLocalizedMenu();
     }
 
+    private void ToggleStartup()
+    {
+        var requested = !StartupRegistration.IsEnabled();
+        var applied = StartupToggleRequested?.Invoke(requested) ?? StartupRegistration.IsEnabled();
+        ApplyStartupState(applied);
+    }
+
+    private void ApplyStartupState(bool enabled)
+    {
+        _startupItem.Tag = enabled ? IconStartupOn : IconStartup;
+        _startupItem.Text = Loc.T("menu.startup");
+    }
+
     private void UpdateLocalizedMenu()
     {
         _showItem.Text = Loc.T("menu.showWindow");
@@ -242,6 +272,10 @@ internal sealed class TrayIconService : ITrayIconService
         _updateItem.Text = Loc.T("menu.checkUpdates");
         _languageItem.Text = Loc.T("menu.language");
         _exitItem.Text = Loc.T("menu.exit");
+        // Re-read every time the menu opens: Task Manager's Startup tab and the Settings app can
+        // disable the entry behind the app's back.
+        _startupItem.Enabled = StartupRegistration.IsSupported;
+        ApplyStartupState(StartupRegistration.IsEnabled());
 
         foreach (var item in _languageItem.DropDownItems.OfType<Forms.ToolStripMenuItem>())
         {
@@ -523,6 +557,28 @@ internal sealed class TrayIconService : ITrayIconService
                     g.DrawEllipse(pen, r.X, r.Y, r.Width, r.Height);
                     g.DrawLine(pen, r.X, cy, r.Right, cy);
                     g.DrawEllipse(pen, cx - (r.Width * 0.28f), r.Y, r.Width * 0.56f, r.Height);
+                    break;
+                case IconStartup:
+                case IconStartupOn:
+                    // Mirrors the update glyph — same baseline, arrow reversed — because this is the
+                    // launch direction rather than the download direction.
+                    g.DrawLine(pen, cx, r.Bottom - (s * 0.14f), cx, r.Y + (s * 0.12f));
+                    g.DrawLines(pen,
+                    [
+                        new PointF(cx - (s * 0.24f), r.Y + (s * 0.36f)),
+                        new PointF(cx, r.Y + (s * 0.12f)),
+                        new PointF(cx + (s * 0.24f), r.Y + (s * 0.36f)),
+                    ]);
+                    g.DrawLine(pen, r.X + (s * 0.14f), r.Bottom, r.Right - (s * 0.14f), r.Bottom);
+                    if (id == IconStartupOn)
+                    {
+                        // A filled badge is the only "on" affordance available here: the strip runs
+                        // without a check margin, so WinForms would draw no tick at all.
+                        using var badge = new SolidBrush(color);
+                        var dot = 3.2f * scale;
+                        g.FillEllipse(badge, r.Right - (dot / 2f), r.Y - (dot / 2f), dot, dot);
+                    }
+
                     break;
                 case IconExit:
                     var pr = RectangleF.Inflate(r, -s * 0.04f, -s * 0.04f);

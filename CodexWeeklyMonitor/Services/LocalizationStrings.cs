@@ -114,6 +114,11 @@ internal static class Strings
         ["menu.exit"] = ["退出程序", "Exit", "종료"],
         ["menu.language"] = ["语言 / Language", "Language / 语言", "언어 / Language"],
         ["menu.gauge"] = ["切换到液面悬浮球", "Switch to liquid orb", "액체 오브로 전환"],
+        ["menu.startup"] = ["开机自动启动", "Start with Windows", "Windows 시작 시 실행"],
+        ["startup.failed"] = [
+            "无法写入开机启动项，Windows 拒绝了对注册表的修改。请检查安全软件或组策略是否限制了启动项。",
+            "Could not write the startup entry: Windows refused the registry change. Check whether security software or a group policy restricts startup items.",
+            "시작 항목을 기록하지 못했습니다. Windows가 레지스트리 변경을 거부했습니다. 보안 소프트웨어나 그룹 정책이 시작 항목을 제한하는지 확인하세요."],
 
         // Application updates
         ["update.title"] = ["版本更新", "Software update", "소프트웨어 업데이트"],

@@ -248,6 +248,16 @@
                                   Data="M9.5 3h5l-.6 6 2.6 2.8H7.5l2.6-2.8z M12 14.8V21" />
                         </MenuItem.Icon>
                     </MenuItem>
+                    <MenuItem x:Name="StartupMenuItem"
+                              Header="{loc:Str menu.startup}"
+                              Style="{DynamicResource ModernMenuItemAccentStyle}"
+                              IsCheckable="True"
+                              Click="StartupMenuItem_Click">
+                        <MenuItem.Icon>
+                            <Path Style="{DynamicResource MenuIconStyle}"
+                                  Data="M12 3v9 M6.3 6.3a8 8 0 1 0 11.4 0" />
+                        </MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem x:Name="CheckUpdatesMenuItem"
                               Header="{loc:Str menu.checkUpdates}"
                               Style="{DynamicResource ModernMenuItemStyle}"

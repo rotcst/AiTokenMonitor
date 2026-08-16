@@ -40,6 +40,11 @@ system tray after opening the main window. Launching it again restores the exist
   terminal CLI and the desktop app.
 - **Trilingual UI** (English / 简体中文 / 한국어), auto-selected from your system language and
   switchable at runtime from either right-click menu.
+- **Start with Windows**: toggle it from the main-window, tray, or orb context menu. It registers
+  the EXE under the per-user `HKCU\...\CurrentVersion\Run` key — no administrator rights, no
+  installer, nothing left behind machine-wide. A sign-in launch goes straight to the tray without
+  showing or stealing focus from the window, and moving the portable EXE re-points the entry on the
+  next run instead of silently breaking it.
 - **Online updates**: checks the latest stable GitHub Release on startup, or on demand from the
   main-window, tray, and orb context menus. With your confirmation it downloads the EXE, verifies
   its size and SHA-256 digest, replaces the old file, and restarts — no GitHub token required.

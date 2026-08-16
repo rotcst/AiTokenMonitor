@@ -48,6 +48,7 @@ public partial class MainWindow : Window
     private bool _refreshInProgress;
     private bool _isClosing;
     private bool _initialized;
+    private bool _startHiddenInTray;
     private ExpandedPanel _expandedPanel = ExpandedPanel.None;
     private GaugeWindow? _gaugeWindow;
     private Point? _gaugeTopLeft;
@@ -92,6 +93,7 @@ public partial class MainWindow : Window
         _trayIcon.RefreshRequested += TrayIcon_RefreshRequested;
         _trayIcon.UpdateRequested += TrayIcon_UpdateRequested;
         _trayIcon.ExitRequested += TrayIcon_ExitRequested;
+        _trayIcon.StartupToggleRequested += ApplyStartupPreference;
         Loc.Changed += Loc_Changed;
         Loaded += MainWindow_Loaded;
     }
@@ -99,6 +101,25 @@ public partial class MainWindow : Window
     private void Loc_Changed(object? sender, EventArgs e)
     {
         RunOnDispatcher(OnLanguageChanged);
+    }
+
+    /// <summary>
+    /// Comes up straight into the tray for the launch Windows performs at sign-in.
+    /// </summary>
+    /// <remarks>
+    /// The window still has to be shown once: WPF raises <see cref="FrameworkElement.Loaded"/> only
+    /// for a shown window, and every monitor, timer, and placement restore hangs off that event.
+    /// Showing it transparent and unactivated keeps it off the screen and out of the way of
+    /// whatever the user is signing in to do, and <see cref="MainWindow_Loaded"/> hides it for real
+    /// as soon as initialisation reaches a point where hiding is safe.
+    /// </remarks>
+    internal void ShowStartingHiddenInTray()
+    {
+        _startHiddenInTray = true;
+        ShowActivated = false;
+        ShowInTaskbar = false;
+        Opacity = 0;
+        Show();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -126,6 +147,16 @@ public partial class MainWindow : Window
         RestorePlacement();
         // Normalise the header captions (arrow suffix) for whatever state placement restored.
         SetExpandedPanel(_expandedPanel);
+        if (_startHiddenInTray)
+        {
+            // Placement is restored first so the window remembers where to reappear, and the
+            // opacity goes back to 1 only once it is hidden, ready for the trip back from the tray.
+            _startHiddenInTray = false;
+            HideToTray();
+            Opacity = 1;
+            ShowActivated = true;
+        }
+
         _localTokenMonitor.Start();
         _claudeMonitor.Start();
         _refreshTimer.Start();
@@ -933,6 +964,7 @@ public partial class MainWindow : Window
             _gaugeWindow.RefreshRequested += GaugeWindow_RefreshRequested;
             _gaugeWindow.UpdateRequested += GaugeWindow_UpdateRequested;
             _gaugeWindow.TopmostChangedRequested += GaugeWindow_TopmostChangedRequested;
+            _gaugeWindow.StartupToggleRequested += ApplyStartupPreference;
         }
 
         PushGaugeValues();
@@ -1097,6 +1129,10 @@ public partial class MainWindow : Window
             ? "menu.collapseHistory"
             : "menu.expandHistory");
         TopmostMenuItem.IsChecked = Topmost;
+        // Read from the registry rather than a cached flag: the entry can also be cleared from
+        // Task Manager's Startup tab or the Settings app while this window sits in the tray.
+        StartupMenuItem.IsEnabled = StartupRegistration.IsSupported;
+        StartupMenuItem.IsChecked = StartupRegistration.IsEnabled();
 
         if (sender is ContextMenu menu)
         {
@@ -1280,6 +1316,41 @@ public partial class MainWindow : Window
         {
             _gaugeWindow.Topmost = Topmost;
         }
+    }
+
+    private void StartupMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        StartupMenuItem.IsChecked = ApplyStartupPreference(StartupMenuItem.IsChecked);
+    }
+
+    /// <summary>
+    /// Applies the requested auto-start state and reports what actually stuck, so a menu whose
+    /// write was refused snaps back instead of claiming a setting the registry never took.
+    /// </summary>
+    /// <remarks>
+    /// The failure notice is deferred to the dispatcher because the tray's WinForms menu calls this
+    /// from inside its own message loop, and a modal dialog opened there would sit behind a menu
+    /// that cannot close.
+    /// </remarks>
+    private bool ApplyStartupPreference(bool enabled)
+    {
+        if (StartupRegistration.TrySetEnabled(enabled))
+        {
+            return enabled;
+        }
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (!_isClosing)
+            {
+                UpdateDialog.ShowInformation(
+                    IsVisible ? this : _gaugeWindow,
+                    Loc.T("startup.failed"),
+                    Topmost,
+                    Loc.T("menu.startup"));
+            }
+        }));
+        return StartupRegistration.IsEnabled();
     }
 
     private void GaugeMenuItem_Click(object sender, RoutedEventArgs e)
@@ -1487,6 +1558,7 @@ public partial class MainWindow : Window
         _trayIcon.RefreshRequested -= TrayIcon_RefreshRequested;
         _trayIcon.UpdateRequested -= TrayIcon_UpdateRequested;
         _trayIcon.ExitRequested -= TrayIcon_ExitRequested;
+        _trayIcon.StartupToggleRequested -= ApplyStartupPreference;
         Loc.Changed -= Loc_Changed;
         _client.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _localTokenMonitor.Dispose();

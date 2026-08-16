@@ -12,16 +12,20 @@ public partial class UpdateDialog : Window
     private readonly CancellationTokenSource _cancellation = new();
     private bool _downloading;
 
+    /// <param name="title">
+    /// Overrides the heading for callers that reuse this chrome for a non-update notice.
+    /// </param>
     private UpdateDialog(
         string message,
         UpdateRelease? release = null,
-        IUpdateService? updateService = null)
+        IUpdateService? updateService = null,
+        string? title = null)
     {
         InitializeComponent();
         _release = release;
         _updateService = updateService;
 
-        Title = Loc.T("update.title");
+        Title = title ?? Loc.T("update.title");
         TitleText.Text = Title;
         MessageText.Text = message;
         VersionText.Text = release is null
@@ -43,9 +47,9 @@ public partial class UpdateDialog : Window
         }
     }
 
-    internal static void ShowInformation(Window? owner, string message, bool topmost)
+    internal static void ShowInformation(Window? owner, string message, bool topmost, string? title = null)
     {
-        var dialog = new UpdateDialog(message);
+        var dialog = new UpdateDialog(message, title: title);
         ConfigureOwner(dialog, owner, topmost);
         dialog.ShowDialog();
     }

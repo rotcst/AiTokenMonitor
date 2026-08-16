@@ -1938,6 +1938,7 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             "展开逐日 Token 历史",
             "切换到液面悬浮球",
             "始终置顶",
+            "开机自动启动",
             "语言 / Language",
             "检查版本更新",
         };
@@ -1996,6 +1997,7 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
                 "Claude status",
                 "显示主窗口",
                 "立即刷新",
+                "开机自动启动",
                 "语言 / Language",
                 "检查版本更新",
                 "退出程序",
@@ -2440,6 +2442,37 @@ RunSta("更新信息弹窗只保留知道了按钮并可正常关闭", () =>
     Equal(true, closed);
 });
 
+// Only the pure helpers are covered: TrySetEnabled writes the real HKCU Run key, so exercising it
+// here would register the test host to start with Windows on the developer's own machine.
+Run("开机启动：命令行带引号，避免路径中的空格被截断", () =>
+{
+    Equal(
+        "\"C:\\Program Files\\Ai Token\\AiTokenMonitor.exe\" --autostart",
+        StartupRegistration.BuildCommand("C:\\Program Files\\Ai Token\\AiTokenMonitor.exe"));
+});
+
+Run("开机启动：相对路径写入注册表前先展开为绝对路径", () =>
+{
+    var command = StartupRegistration.BuildCommand(".\\AiTokenMonitor.exe");
+    Equal(
+        $"\"{Path.GetFullPath(".\\AiTokenMonitor.exe")}\" --autostart",
+        command);
+});
+
+Run("开机启动：没有可执行文件路径时不生成命令", () =>
+{
+    Equal(null, StartupRegistration.BuildCommand(null));
+    Equal(null, StartupRegistration.BuildCommand("   "));
+});
+
+Run("开机启动：仅在参数含 --autostart 时静默进入托盘", () =>
+{
+    Equal(true, StartupRegistration.IsAutostartLaunch(["--autostart"]));
+    Equal(true, StartupRegistration.IsAutostartLaunch(["--cleanup-update", "x.exe", "--AutoStart"]));
+    Equal(false, StartupRegistration.IsAutostartLaunch([]));
+    Equal(false, StartupRegistration.IsAutostartLaunch(["--autostart-later"]));
+});
+
 Console.WriteLine(failed == 0
     ? "全部测试通过。"
     : $"{failed} 个测试失败。");
@@ -2608,6 +2641,8 @@ sealed class FakeTrayIconService : ITrayIconService
 
     public event EventHandler? ExitRequested;
 
+    public event Func<bool, bool>? StartupToggleRequested;
+
     public bool Visible { get; set; } = true;
 
     public string ToolTipText { get; set; } = string.Empty;
@@ -2626,6 +2661,9 @@ sealed class FakeTrayIconService : ITrayIconService
     public void RequestUpdate() => UpdateRequested?.Invoke(this, EventArgs.Empty);
 
     public void RequestExit() => ExitRequested?.Invoke(this, EventArgs.Empty);
+
+    public bool RequestStartupToggle(bool enabled) =>
+        StartupToggleRequested?.Invoke(enabled) ?? enabled;
 
     public void UpdateMenuStatus(string codexStatus, string claudeStatus)
     {

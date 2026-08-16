@@ -52,6 +52,12 @@ public partial class GaugeWindow : Window
     /// <summary>Keeps the full card's persisted topmost preference in sync with the orb menu.</summary>
     public event Action<bool>? TopmostChangedRequested;
 
+    /// <summary>
+    /// Asks the owner to write the auto-start registration. The owner answers with the state that
+    /// actually stuck, because a refused registry write must not leave the orb menu ticked.
+    /// </summary>
+    public event Func<bool, bool>? StartupToggleRequested;
+
     public void SetWindows(
         RateLimitWindow? codexFiveHour,
         RateLimitWindow? codexWeekly,
@@ -112,12 +118,22 @@ public partial class GaugeWindow : Window
     private void CheckUpdatesMenuItem_Click(object sender, RoutedEventArgs e) =>
         UpdateRequested?.Invoke(this, EventArgs.Empty);
 
-    private void GaugeContextMenu_Opened(object sender, RoutedEventArgs e) =>
+    private void GaugeContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
         GaugeTopmostMenuItem.IsChecked = Topmost;
+        GaugeStartupMenuItem.IsEnabled = StartupRegistration.IsSupported;
+        GaugeStartupMenuItem.IsChecked = StartupRegistration.IsEnabled();
+    }
 
     private void TopmostMenuItem_Click(object sender, RoutedEventArgs e)
     {
         Topmost = GaugeTopmostMenuItem.IsChecked;
         TopmostChangedRequested?.Invoke(Topmost);
+    }
+
+    private void StartupMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        GaugeStartupMenuItem.IsChecked =
+            StartupToggleRequested?.Invoke(GaugeStartupMenuItem.IsChecked) ?? StartupRegistration.IsEnabled();
     }
 }
