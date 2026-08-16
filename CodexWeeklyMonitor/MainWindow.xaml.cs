@@ -29,6 +29,15 @@ public partial class MainWindow : Window
     private static readonly Brush DangerBrush = CreateBrush(0xFF, 0x6B, 0x6B);
     private static readonly Brush UnavailableBrush = CreateBrush(0x5B, 0x66, 0x72);
 
+    /// <summary>How often a long-running instance re-checks GitHub for a newer release.</summary>
+    private static readonly TimeSpan UpdateCheckInterval = TimeSpan.FromHours(6);
+
+    /// <summary>
+    /// How long a version the user already declined stays quiet. Without it, a release the user
+    /// answered "Later" to would ask again on every check for as long as the app keeps running.
+    /// </summary>
+    private static readonly TimeSpan UpdatePromptCooldown = TimeSpan.FromHours(24);
+
     private readonly CodexUsageProvider _client = new();
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly ITrayIconService _trayIcon;
@@ -38,6 +47,7 @@ public partial class MainWindow : Window
     private readonly bool _monitoringEnabled;
     private readonly DispatcherTimer _refreshTimer;
     private readonly DispatcherTimer _clockTimer;
+    private readonly DispatcherTimer _updateTimer;
 
     private CodexUsageSnapshot? _currentSnapshot;
     private ClaudeUsageSnapshot? _claudeSnapshot;
@@ -54,6 +64,8 @@ public partial class MainWindow : Window
     private Point? _gaugeTopLeft;
     private bool _updateCheckInProgress;
     private bool _manualUpdateResultRequested;
+    private Version? _promptedVersion;
+    private DateTimeOffset _promptedAt;
 
     public MainWindow() : this(null, enableMonitoring: true)
     {
@@ -85,6 +97,15 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromSeconds(10),
         };
         _clockTimer.Tick += (_, _) => UpdateResetLabels();
+
+        // Checking once at startup was enough while the app was launched by hand. It now starts
+        // with Windows and can sit in the tray for weeks, so anything released in between would
+        // never be noticed without a periodic re-check.
+        _updateTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = UpdateCheckInterval,
+        };
+        _updateTimer.Tick += async (_, _) => await CheckForUpdatesAsync(userInitiated: false);
 
         _client.RefreshSuggested += Client_RefreshSuggested;
         _localTokenMonitor.UsageUpdated += LocalTokenMonitor_UsageUpdated;
@@ -161,6 +182,7 @@ public partial class MainWindow : Window
         _claudeMonitor.Start();
         _refreshTimer.Start();
         _clockTimer.Start();
+        _updateTimer.Start();
         _ = CheckForUpdatesAfterStartupAsync();
         await RefreshUsageAsync();
     }
@@ -1068,11 +1090,16 @@ public partial class MainWindow : Window
             var result = await _updateService.CheckForUpdateAsync(_lifetimeCancellation.Token);
             if (result.IsUpdateAvailable)
             {
-                UpdateDialog.ShowAvailable(
-                    IsVisible ? this : null,
-                    result.Release,
-                    _updateService,
-                    Topmost);
+                if (userInitiated || ShouldPromptFor(result.Release.Version))
+                {
+                    _promptedVersion = result.Release.Version;
+                    _promptedAt = DateTimeOffset.UtcNow;
+                    UpdateDialog.ShowAvailable(
+                        IsVisible ? this : null,
+                        result.Release,
+                        _updateService,
+                        Topmost);
+                }
             }
             else if (userInitiated || _manualUpdateResultRequested)
             {
@@ -1102,6 +1129,27 @@ public partial class MainWindow : Window
             _manualUpdateResultRequested = false;
         }
     }
+
+    /// <summary>
+    /// A newly released version always interrupts; one the user already saw waits out the cooldown.
+    /// </summary>
+    /// <remarks>
+    /// An explicit check from a menu bypasses this entirely — asking for the result and being told
+    /// nothing because of a cooldown would read as a broken button.
+    /// </remarks>
+    internal static bool ShouldPromptForUpdate(
+        Version available,
+        Version? promptedVersion,
+        DateTimeOffset promptedAt,
+        DateTimeOffset now)
+    {
+        return promptedVersion is null ||
+               available != promptedVersion ||
+               now - promptedAt >= UpdatePromptCooldown;
+    }
+
+    private bool ShouldPromptFor(Version available) =>
+        ShouldPromptForUpdate(available, _promptedVersion, _promptedAt, DateTimeOffset.UtcNow);
 
     private void ProviderTab_Checked(object sender, RoutedEventArgs e)
     {
@@ -1537,6 +1585,7 @@ public partial class MainWindow : Window
         _isClosing = true;
         _refreshTimer.Stop();
         _clockTimer.Stop();
+        _updateTimer.Stop();
         _lifetimeCancellation.Cancel();
         if (_monitoringEnabled)
         {

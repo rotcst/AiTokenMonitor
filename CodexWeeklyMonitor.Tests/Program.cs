@@ -2442,6 +2442,26 @@ RunSta("更新信息弹窗只保留知道了按钮并可正常关闭", () =>
     Equal(true, closed);
 });
 
+Run("后台更新检查：新版本立刻提示，已拒绝的版本冷却期内不再打扰", () =>
+{
+    var now = DateTimeOffset.UtcNow;
+    var v2 = new Version(2, 0, 0, 0);
+    var v3 = new Version(3, 0, 0, 0);
+
+    // Nothing prompted yet.
+    Equal(true, MainWindow.ShouldPromptForUpdate(v2, null, default, now));
+
+    // Same version the user just declined: stay quiet.
+    Equal(false, MainWindow.ShouldPromptForUpdate(v2, v2, now.AddHours(-1), now));
+    Equal(false, MainWindow.ShouldPromptForUpdate(v2, v2, now.AddHours(-23), now));
+
+    // ...but not forever.
+    Equal(true, MainWindow.ShouldPromptForUpdate(v2, v2, now.AddHours(-25), now));
+
+    // A newer release always interrupts, cooldown or not.
+    Equal(true, MainWindow.ShouldPromptForUpdate(v3, v2, now, now));
+});
+
 Run("Claude 额度：刚写入的回合触发即时拉取，历史记录不触发", () =>
 {
     var now = DateTimeOffset.UtcNow;

@@ -45,9 +45,12 @@ system tray after opening the main window. Launching it again restores the exist
   installer, nothing left behind machine-wide. A sign-in launch goes straight to the tray without
   showing or stealing focus from the window, and moving the portable EXE re-points the entry on the
   next run instead of silently breaking it.
-- **Online updates**: checks the latest stable GitHub Release on startup, or on demand from the
-  main-window, tray, and orb context menus. With your confirmation it downloads the EXE, verifies
-  its size and SHA-256 digest, replaces the old file, and restarts — no GitHub token required.
+- **Online updates**: checks the latest stable GitHub Release on startup and every 6 hours after
+  that, so an instance that starts with Windows and sits in the tray for weeks still notices a new
+  release. A new version prompts immediately; one you answered "Later" to stays quiet for 24 hours,
+  while a newer one still interrupts. Manual checks live in the main-window, tray, and orb context
+  menus. With your confirmation it downloads the EXE, verifies its size and SHA-256 digest,
+  replaces the old file, and restarts — no GitHub token required.
 - **Native window behaviour**: rounded DWM corners, minimize/restore animation, minimize to
   taskbar, hide to tray. Exit lives only in the tray menu so you don't close it by accident.
 
