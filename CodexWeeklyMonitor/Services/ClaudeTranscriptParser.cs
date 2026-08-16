@@ -5,6 +5,8 @@ namespace CodexWeeklyMonitor.Services;
 
 internal static class ClaudeTranscriptParser
 {
+    private const string UsageProperty = "\"usage\"";
+
     public static IReadOnlyList<ClaudeTokenRecord> ParseText(
         string text,
         string sourceKey,
@@ -38,13 +40,22 @@ internal static class ClaudeTranscriptParser
         while (reader.ReadLine() is { } line)
         {
             lineNumber++;
-            if (TryParseSessionState(line, fallbackTimestamp) is { } state &&
+            // Tool results and pasted attachments are most of a transcript's bytes and carry no
+            // usage block, so a substring test keeps JsonDocument off roughly three quarters of the
+            // lines. Both readers below require message.usage, so nothing that matters is skipped.
+            if (!line.Contains(UsageProperty, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var parsed = ParseUsageLine(line, sourceKey, lineNumber, fallbackTimestamp);
+            if (parsed.State is { } state &&
                 (sessionState is null || state.ObservedAt >= sessionState.ObservedAt))
             {
                 sessionState = state;
             }
 
-            if (TryParseLine(line, sourceKey, lineNumber, fallbackTimestamp) is not { } record)
+            if (parsed.Record is not { } record)
             {
                 continue;
             }
@@ -66,11 +77,22 @@ internal static class ClaudeTranscriptParser
         string line,
         DateTimeOffset fallbackTimestamp)
     {
-        if (string.IsNullOrWhiteSpace(line))
-        {
-            return null;
-        }
+        return string.IsNullOrWhiteSpace(line)
+            ? null
+            : ParseUsageLine(line, sourceKey: string.Empty, lineNumber: 0, fallbackTimestamp).State;
+    }
 
+    /// <summary>
+    /// Reads the session state and the token record from one line in a single JSON pass. Both need
+    /// the same <c>message.usage</c> object, and parsing each line twice doubled the work and the
+    /// pooled buffers for no gain.
+    /// </summary>
+    private static TranscriptLine ParseUsageLine(
+        string line,
+        string sourceKey,
+        int lineNumber,
+        DateTimeOffset fallbackTimestamp)
+    {
         try
         {
             using var document = JsonDocument.Parse(line);
@@ -81,32 +103,86 @@ internal static class ClaudeTranscriptParser
                 !message.TryGetProperty("usage", out var usage) ||
                 usage.ValueKind != JsonValueKind.Object)
             {
-                return null;
+                return default;
             }
 
-            var contextTokens = SumSaturated(
-            [
-                GetNonNegativeInt64(usage, "input_tokens"),
-                GetNonNegativeInt64(usage, "cache_creation_input_tokens"),
-                GetNonNegativeInt64(usage, "cache_read_input_tokens"),
-            ]);
-            if (contextTokens <= 0)
-            {
-                return null;
-            }
-
-            return new ClaudeSessionState(
-                ModelName: TryGetString(message, "model"),
-                ContextTokens: contextTokens,
-                Effort: TryGetString(root, "effort"),
-                Version: TryGetString(root, "version"),
-                ObservedAt: TryGetTimestamp(root) ?? fallbackTimestamp);
+            var observedAt = TryGetTimestamp(root) ?? fallbackTimestamp;
+            return new TranscriptLine(
+                ReadSessionState(root, message, usage, observedAt),
+                ReadTokenRecord(root, message, usage, sourceKey, lineNumber, observedAt));
         }
         catch (JsonException)
         {
-            return null;
+            return default;
         }
     }
+
+    /// <summary>
+    /// Context is what the model actually had in front of it: fresh input plus everything read from
+    /// or written to cache.
+    /// </summary>
+    private static ClaudeSessionState? ReadSessionState(
+        JsonElement root,
+        JsonElement message,
+        JsonElement usage,
+        DateTimeOffset observedAt)
+    {
+        var contextTokens = SumSaturated(
+        [
+            GetNonNegativeInt64(usage, "input_tokens"),
+            GetNonNegativeInt64(usage, "cache_creation_input_tokens"),
+            GetNonNegativeInt64(usage, "cache_read_input_tokens"),
+        ]);
+        if (contextTokens <= 0)
+        {
+            return null;
+        }
+
+        return new ClaudeSessionState(
+            ModelName: TryGetString(message, "model"),
+            ContextTokens: contextTokens,
+            Effort: TryGetString(root, "effort"),
+            Version: TryGetString(root, "version"),
+            ObservedAt: observedAt);
+    }
+
+    private static ClaudeTokenRecord? ReadTokenRecord(
+        JsonElement root,
+        JsonElement message,
+        JsonElement usage,
+        string sourceKey,
+        int lineNumber,
+        DateTimeOffset observedAt)
+    {
+        var tokens = SumSaturated(
+        [
+            GetNonNegativeInt64(usage, "input_tokens"),
+            GetNonNegativeInt64(usage, "output_tokens"),
+            GetNonNegativeInt64(usage, "cache_creation_input_tokens"),
+            GetNonNegativeInt64(usage, "cache_read_input_tokens"),
+        ]);
+        if (tokens <= 0)
+        {
+            return null;
+        }
+
+        var messageId = TryGetString(message, "id");
+        var uuid = TryGetString(root, "uuid");
+        var key = !string.IsNullOrWhiteSpace(messageId)
+            ? $"message:{messageId}"
+            : !string.IsNullOrWhiteSpace(uuid)
+                ? $"uuid:{uuid}"
+                : $"{sourceKey}:{lineNumber}";
+        return new ClaudeTokenRecord(
+            key,
+            DateOnly.FromDateTime(observedAt.ToLocalTime().DateTime),
+            tokens,
+            observedAt);
+    }
+
+    private readonly record struct TranscriptLine(
+        ClaudeSessionState? State,
+        ClaudeTokenRecord? Record);
 
     public static AccountTokenUsage BuildAccountUsage(
         IEnumerable<ClaudeTokenRecord> sourceRecords,
@@ -138,61 +214,6 @@ internal static class ClaudeTranscriptParser
             LongestStreakDays: longestStreak,
             DailyUsage: dailyUsage,
             FetchedAt: fetchedAt);
-    }
-
-    private static ClaudeTokenRecord? TryParseLine(
-        string line,
-        string sourceKey,
-        int lineNumber,
-        DateTimeOffset fallbackTimestamp)
-    {
-        if (string.IsNullOrWhiteSpace(line))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(line);
-            var root = document.RootElement;
-            if (!root.TryGetProperty("message", out var message) ||
-                message.ValueKind != JsonValueKind.Object ||
-                !message.TryGetProperty("usage", out var usage) ||
-                usage.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
-
-            var tokens = SumSaturated(
-            [
-                GetNonNegativeInt64(usage, "input_tokens"),
-                GetNonNegativeInt64(usage, "output_tokens"),
-                GetNonNegativeInt64(usage, "cache_creation_input_tokens"),
-                GetNonNegativeInt64(usage, "cache_read_input_tokens"),
-            ]);
-            if (tokens <= 0)
-            {
-                return null;
-            }
-
-            var observedAt = TryGetTimestamp(root) ?? fallbackTimestamp;
-            var messageId = TryGetString(message, "id");
-            var uuid = TryGetString(root, "uuid");
-            var key = !string.IsNullOrWhiteSpace(messageId)
-                ? $"message:{messageId}"
-                : !string.IsNullOrWhiteSpace(uuid)
-                    ? $"uuid:{uuid}"
-                    : $"{sourceKey}:{lineNumber}";
-            return new ClaudeTokenRecord(
-                key,
-                DateOnly.FromDateTime(observedAt.ToLocalTime().DateTime),
-                tokens,
-                observedAt);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
     }
 
     private static string? TryGetString(JsonElement element, string name)

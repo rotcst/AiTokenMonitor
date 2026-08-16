@@ -14,6 +14,8 @@ public sealed class ClaudeUsageMonitor : IDisposable
     internal static readonly TimeSpan SessionMaxAge = TimeSpan.FromMinutes(30);
 
     private readonly ConcurrentDictionary<string, byte> _pendingPaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, FileState> _observedFiles =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<ClaudeTokenRecord>> _recordsByFile =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly object _recordsGate = new();
@@ -347,6 +349,22 @@ public sealed class ClaudeUsageMonitor : IDisposable
                         _sessionByFile.Remove(path);
                     }
 
+                    _observedFiles.TryRemove(path, out _);
+                    continue;
+                }
+
+                if (!TryGetFileState(path, out var readState))
+                {
+                    _pendingPaths.TryAdd(path, 0);
+                    continue;
+                }
+
+                // The window's one-minute refresh re-queues every transcript, and a watcher fires
+                // several times per append. Re-reading a file whose size and timestamp are
+                // unchanged re-materialises its every line as a string for nothing — on a large
+                // history that was the entire corpus, every minute, whether or not Claude ran.
+                if (_observedFiles.TryGetValue(path, out var observed) && observed == readState)
+                {
                     continue;
                 }
 
@@ -366,6 +384,9 @@ public sealed class ClaudeUsageMonitor : IDisposable
                         }
                     }
 
+                    // The state captured before the read is what gets remembered: if Claude appended
+                    // while the file was being parsed, the next scan sees a difference and retries.
+                    _observedFiles[path] = readState;
                     changed = true;
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -454,6 +475,26 @@ public sealed class ClaudeUsageMonitor : IDisposable
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetFileState(string path, out FileState state)
+    {
+        state = default;
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists)
+            {
+                return false;
+            }
+
+            state = new FileState(info.Length, info.LastWriteTimeUtc);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             return false;
         }
@@ -565,6 +606,9 @@ public sealed class ClaudeUsageMonitor : IDisposable
         _timer = null;
         _quotaTimer = null;
         _transcriptWatchers.Clear();
+        _observedFiles.Clear();
         _bridgeWatcher = null;
     }
+
+    private readonly record struct FileState(long Length, DateTime LastWriteTimeUtc);
 }

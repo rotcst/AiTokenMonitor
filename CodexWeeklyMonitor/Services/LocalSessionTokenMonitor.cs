@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
@@ -475,7 +476,7 @@ public sealed class LocalSessionTokenMonitor : IDisposable
 
             while (reader.ReadLine() is { } line)
             {
-                if (!TryParseUsageLine(line, File.GetLastWriteTimeUtc(path), out var usage))
+                if (!TryParseUsageLine(line.AsMemory(), File.GetLastWriteTimeUtc(path), out var usage))
                 {
                     continue;
                 }
@@ -702,21 +703,31 @@ public sealed class LocalSessionTokenMonitor : IDisposable
 
             var bytesToRead = (int)Math.Min(stream.Length, MaximumTailBytes);
             stream.Seek(-bytesToRead, SeekOrigin.End);
-            var buffer = new byte[bytesToRead];
-            var read = 0;
-            while (read < bytesToRead)
+            // Pooled: this runs for every active session file every couple of seconds, and a fresh
+            // half-megabyte array each time went straight to the large object heap.
+            var buffer = ArrayPool<byte>.Shared.Rent(bytesToRead);
+            try
             {
-                var count = stream.Read(buffer, read, bytesToRead - read);
-                if (count == 0)
+                var read = 0;
+                while (read < bytesToRead)
                 {
-                    break;
+                    var count = stream.Read(buffer, read, bytesToRead - read);
+                    if (count == 0)
+                    {
+                        break;
+                    }
+
+                    read += count;
                 }
 
-                read += count;
+                var text = Encoding.UTF8.GetString(buffer, 0, read);
+                usage = ParseLatestFromText(text, File.GetLastWriteTimeUtc(path));
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
 
-            var text = Encoding.UTF8.GetString(buffer, 0, read);
-            usage = ParseLatestFromText(text, File.GetLastWriteTimeUtc(path));
             return true;
         }
         catch (Exception exception) when (
@@ -726,29 +737,40 @@ public sealed class LocalSessionTokenMonitor : IDisposable
         }
     }
 
+    /// <summary>
+    /// Walks the tail backwards to the newest usage record.
+    /// </summary>
+    /// <remarks>
+    /// Slices rather than splits: <c>Split</c> materialised the whole half-megabyte tail a second
+    /// time as an array of substrings, on every scan of every active session file, and only the one
+    /// matching line is ever needed.
+    /// </remarks>
     internal static LiveTokenUsage? ParseLatestFromText(string text, DateTimeOffset fallbackTimestamp)
     {
-        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        for (var index = lines.Length - 1; index >= 0; index--)
+        var end = text.Length;
+        while (end > 0)
         {
-            var line = lines[index].TrimEnd('\r');
-            if (TryParseUsageLine(line, fallbackTimestamp, out var usage))
+            var start = text.LastIndexOf('\n', end - 1) + 1;
+            var line = text.AsMemory(start, end - start).TrimEnd('\r');
+            if (!line.IsEmpty && TryParseUsageLine(line, fallbackTimestamp, out var usage))
             {
                 return usage;
             }
+
+            end = start - 1;
         }
 
         return null;
     }
 
     private static bool TryParseUsageLine(
-        string line,
+        ReadOnlyMemory<char> line,
         DateTimeOffset fallbackTimestamp,
         out LiveTokenUsage usage)
     {
         usage = default!;
-        if (!line.Contains("token_count", StringComparison.Ordinal) &&
-            !line.Contains("total_token_usage", StringComparison.Ordinal))
+        if (!line.Span.Contains("token_count", StringComparison.Ordinal) &&
+            !line.Span.Contains("total_token_usage", StringComparison.Ordinal))
         {
             return false;
         }
