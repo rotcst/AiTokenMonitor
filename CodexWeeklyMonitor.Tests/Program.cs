@@ -2518,6 +2518,57 @@ Run("Claude 会话追加后只读新增字节：不丢记录、不重复计数�
     }
 });
 
+Run("更新前预检目标目录可写性，避免下载完才失败", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), "AiTokenMonitorTests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    try
+    {
+        var exe = Path.Combine(root, "AiTokenMonitor.exe");
+        File.WriteAllText(exe, "stub");
+        Equal(true, UpdateInstaller.IsTargetWritable(exe));
+
+        // The probe must clean up after itself; a stale dotfile beside the EXE would be noise.
+        Equal(1, Directory.GetFiles(root).Length);
+
+        // Nothing to probe.
+        Equal(false, UpdateInstaller.IsTargetWritable(null));
+        Equal(false, UpdateInstaller.IsTargetWritable("   "));
+
+        // A folder that cannot be written to reads as not writable rather than throwing.
+        Equal(false, UpdateInstaller.IsTargetWritable("Q:\\nope\\AiTokenMonitor.exe"));
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+});
+
+Run("安装失败后能找回原程序路径以便重新启动", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), "AiTokenMonitorTests", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    try
+    {
+        var exe = Path.Combine(root, "AiTokenMonitor.exe");
+        File.WriteAllText(exe, "stub");
+
+        Equal(exe, UpdateInstaller.GetApplyTarget(["--apply-update", "1234", exe, "abc"]));
+
+        // Not an apply launch at all.
+        Equal(null, UpdateInstaller.GetApplyTarget(["--autostart"]));
+        // Truncated arguments must not index past the end.
+        Equal(null, UpdateInstaller.GetApplyTarget(["--apply-update", "1234"]));
+        // Only a real EXE that survived the failed replace is worth relaunching.
+        Equal(null, UpdateInstaller.GetApplyTarget(["--apply-update", "1234", Path.Combine(root, "gone.exe"), "abc"]));
+        Equal(null, UpdateInstaller.GetApplyTarget(["--apply-update", "1234", Path.Combine(root, "notanexe.txt"), "abc"]));
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+});
+
 Run("后台更新检查：新版本立刻提示，已拒绝的版本冷却期内不再打扰", () =>
 {
     var now = DateTimeOffset.UtcNow;

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security;
 
 namespace CodexWeeklyMonitor.Services;
 
@@ -42,6 +43,115 @@ internal static class UpdateInstaller
 
         Apply(parentProcessId, args[index + 2], expectedSha256);
         return true;
+    }
+
+    /// <summary>
+    /// Probes whether the folder holding <paramref name="executablePath"/> will accept a new file
+    /// from this user right now, by creating and deleting one.
+    /// </summary>
+    /// <remarks>
+    /// Asked before the download starts, because the answer is usually no for a reason no amount of
+    /// retrying fixes — Controlled folder access refusing writes to the Desktop, an EXE parked under
+    /// Program Files, or security software vetoing writes to a .exe. Finding that out after pulling
+    /// the whole release down wastes a 165 MB transfer to end at the same error.
+    /// </remarks>
+    internal static bool IsTargetWritable(string? executablePath)
+    {
+        if (string.IsNullOrWhiteSpace(executablePath))
+        {
+            return false;
+        }
+
+        string probe;
+        try
+        {
+            var directory = Path.GetDirectoryName(Path.GetFullPath(executablePath));
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                return false;
+            }
+
+            // Named like the real staging file so a folder rule that singles out executables is
+            // exercised the same way the install itself would exercise it.
+            probe = Path.Combine(
+                directory,
+                $".{Path.GetFileName(executablePath)}.{Guid.NewGuid():N}.probe");
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+
+        try
+        {
+            using (var stream = new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                stream.WriteByte(0);
+            }
+
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or SecurityException)
+        {
+            return false;
+        }
+        finally
+        {
+            TryDelete(probe);
+        }
+    }
+
+    /// <summary>
+    /// The EXE this helper was asked to overwrite, so a failed install can put it back on screen.
+    /// </summary>
+    internal static string? GetApplyTarget(string[] args)
+    {
+        var index = Array.IndexOf(args, ApplyArgument);
+        if (index < 0 || index + 2 >= args.Length)
+        {
+            return null;
+        }
+
+        try
+        {
+            var target = Path.GetFullPath(args[index + 2]);
+            return target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(target)
+                ? target
+                : null;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Relaunches the version that is still installed after an install failed part way.
+    /// </summary>
+    /// <remarks>
+    /// The parent exited before this helper started work, so without this the user clicks update,
+    /// sees an error, and is left with nothing running at all. The replace is staged through a
+    /// temporary file and moved into place atomically, so a failure leaves the old EXE intact.
+    /// </remarks>
+    internal static void TryRelaunchAfterFailedApply(string[] args)
+    {
+        if (GetApplyTarget(args) is not { } target)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = target, UseShellExecute = false });
+        }
+        catch (Exception exception) when (
+            exception is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            // Nothing further to try; the user still has the intact EXE to start by hand.
+        }
     }
 
     internal static string? GetCleanupPath(string[] args)
@@ -125,10 +235,10 @@ internal static class UpdateInstaller
     {
         var targetDirectory = Path.GetDirectoryName(target)
             ?? throw new UpdateServiceException("update.installFailed");
-        Directory.CreateDirectory(targetDirectory);
         var staged = Path.Combine(targetDirectory, $".{Path.GetFileName(target)}.{Guid.NewGuid():N}.update");
         try
         {
+            Directory.CreateDirectory(targetDirectory);
             File.Copy(sourceExecutable, staged, overwrite: false);
             if (!GitHubUpdateService.HasExpectedSha256Async(staged, expectedSha256)
                     .GetAwaiter().GetResult())
@@ -137,6 +247,13 @@ internal static class UpdateInstaller
             }
 
             ReplaceWithRetry(staged, target);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            // Raw, this surfaced as "Access to the path is denied." in an otherwise localized UI,
+            // with nothing to act on. The cause is always the same shape — the folder the EXE lives
+            // in will not take a write — so say that and what usually causes it.
+            throw new UpdateServiceException("update.notWritable", exception);
         }
         finally
         {

@@ -64,8 +64,15 @@ ignored). Installation is allowed only when the Release has a matching `AiTokenM
 (`AiTokenMonitor.exe` is also accepted for compatibility) and GitHub provides a valid `sha256:`
 digest. Nothing is installed silently: download and restart begin only after you choose **Update now**.
 
-The portable EXE's directory must be writable by the current Windows user. If you put it in an
-administrator-only directory, download the new version manually from Releases instead.
+The portable EXE's directory must be writable by the current Windows user, and **that is checked
+before anything is downloaded**: if the folder won't take a write, the prompt says so and offers
+**Open download page** instead of spending the whole transfer to reach the same error. The usual
+causes are Controlled folder access blocking writes to your Desktop or Documents, an EXE parked
+somewhere that needs administrator rights such as Program Files, or security software vetoing the
+replacement of a .exe. Moving the app to an ordinary writable folder restores in-place updates.
+
+If the install fails anyway, the existing EXE is left intact — the replacement is staged through a
+temporary file and moved atomically — and the app restarts itself after the message.
 
 ## How it reads your usage
 

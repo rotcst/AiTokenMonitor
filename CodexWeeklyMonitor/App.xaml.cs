@@ -21,11 +21,20 @@ public partial class App : System.Windows.Application
         }
         catch (Exception exception)
         {
+            // An UpdateServiceException carries a resource key, not a sentence: resolving it here is
+            // what keeps a localized explanation from being shown as its own key, and a raw .NET
+            // message from being shown at all.
             System.Windows.MessageBox.Show(
-                Loc.T("update.installErrorDetail", exception.Message),
+                exception is UpdateServiceException updateException
+                    ? Loc.T(updateException.ResourceKey)
+                    : Loc.T("update.installErrorDetail", exception.Message),
                 Loc.T("update.title"),
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+            // The parent already exited to release its own EXE, and the replace is staged so a
+            // failure leaves that EXE intact. Start it again rather than leaving the user with
+            // nothing running after they asked for an update.
+            UpdateInstaller.TryRelaunchAfterFailedApply(e.Args);
             Shutdown();
             return;
         }

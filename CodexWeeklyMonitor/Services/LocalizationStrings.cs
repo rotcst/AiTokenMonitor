@@ -139,6 +139,11 @@ internal static class Strings
         ["update.downloadFailed"] = ["更新文件下载失败，请检查网络后重试。", "The update download failed. Check your connection and retry.", "업데이트 다운로드에 실패했습니다. 네트워크를 확인하고 다시 시도하세요."],
         ["update.integrityFailed"] = ["更新文件 SHA-256 校验失败，已拒绝安装。", "The update failed SHA-256 verification and was not installed.", "업데이트 SHA-256 검증에 실패하여 설치하지 않았습니다."],
         ["update.installFailed"] = ["无法启动更新安装程序，请稍后重试。", "Couldn't start the update installer. Try again later.", "업데이트 설치 프로그램을 시작할 수 없습니다. 나중에 다시 시도하세요."],
+        ["update.notWritable"] = [
+            "无法自动更新：程序所在的文件夹当前不允许写入。常见原因是 Windows 安全中心的「受控文件夹访问」拦截了对桌面或文档的写入、程序被放在 Program Files 等需要管理员权限的目录，或杀毒软件阻止了替换 .exe。把程序移到自己可写的普通文件夹后重试，或直接从发布页下载新版覆盖。",
+            "Can't update in place: the folder this app runs from won't accept a write. Usually that means Controlled folder access is blocking writes to your Desktop or Documents, the app sits somewhere that needs administrator rights such as Program Files, or security software is vetoing the replacement of a .exe. Move the app to an ordinary folder you can write to and retry, or download the new version from the releases page and replace it yourself.",
+            "제자리 업데이트를 할 수 없습니다. 앱이 실행되는 폴더가 쓰기를 허용하지 않습니다. 보통 제어된 폴더 액세스가 바탕 화면이나 문서 쓰기를 차단하거나, 앱이 Program Files처럼 관리자 권한이 필요한 위치에 있거나, 보안 소프트웨어가 .exe 교체를 막는 경우입니다. 쓰기 가능한 일반 폴더로 옮긴 뒤 다시 시도하거나, 릴리스 페이지에서 새 버전을 내려받아 직접 교체하세요."],
+        ["update.openDownloadPage"] = ["打开下载页", "Open download page", "다운로드 페이지 열기"],
         ["update.errorDetail"] = ["更新没有完成：{0}", "The update didn't finish: {0}", "업데이트가 완료되지 않았습니다: {0}"],
         ["update.installErrorDetail"] = ["更新安装失败：{0}", "Update installation failed: {0}", "업데이트 설치 실패: {0}"],
 

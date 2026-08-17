@@ -10,6 +10,7 @@ public partial class UpdateDialog : Window
     private readonly UpdateRelease? _release;
     private readonly IUpdateService? _updateService;
     private readonly CancellationTokenSource _cancellation = new();
+    private bool _canInstallInPlace = true;
     private bool _downloading;
 
     /// <param name="title">
@@ -39,12 +40,22 @@ public partial class UpdateDialog : Window
         {
             SecondaryButton.Visibility = Visibility.Collapsed;
             PrimaryButton.Content = Loc.T("update.ok");
+            return;
         }
-        else
+
+        SecondaryButton.Content = Loc.T("update.later");
+        // Asked before anything is downloaded. If the folder will not take a write, the install is
+        // going to fail no matter how long the transfer takes, so offer the download page instead
+        // of a button that spends the whole release to reach an error.
+        _canInstallInPlace = UpdateInstaller.IsTargetWritable(Environment.ProcessPath);
+        if (_canInstallInPlace)
         {
-            SecondaryButton.Content = Loc.T("update.later");
             PrimaryButton.Content = Loc.T("update.installNow");
+            return;
         }
+
+        MessageText.Text = message + Environment.NewLine + Environment.NewLine + Loc.T("update.notWritable");
+        PrimaryButton.Content = Loc.T("update.openDownloadPage");
     }
 
     internal static void ShowInformation(Window? owner, string message, bool topmost, string? title = null)
@@ -96,6 +107,13 @@ public partial class UpdateDialog : Window
             return;
         }
 
+        if (!_canInstallInPlace)
+        {
+            OpenReleasePage(_release);
+            Close();
+            return;
+        }
+
         _downloading = true;
         PrimaryButton.IsEnabled = false;
         SecondaryButton.IsEnabled = false;
@@ -138,6 +156,25 @@ public partial class UpdateDialog : Window
             PrimaryButton.IsEnabled = true;
             SecondaryButton.IsEnabled = true;
             _downloading = false;
+        }
+    }
+
+    /// <summary>Hands the release page to the browser so the user can install it by hand.</summary>
+    private static void OpenReleasePage(UpdateRelease release)
+    {
+        try
+        {
+            // UseShellExecute is what lets a URL resolve to the default browser at all.
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = release.ReleasePage.ToString(),
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception exception) when (
+            exception is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            DiagnosticsLog.Write("UpdateDialog", $"opening the release page failed: {exception.Message}");
         }
     }
 
