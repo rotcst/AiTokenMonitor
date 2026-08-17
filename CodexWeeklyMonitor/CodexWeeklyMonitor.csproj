@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>AiTokenMonitor</AssemblyName>
     <RootNamespace>CodexWeeklyMonitor</RootNamespace>
-    <Version>2.2.0</Version>
+    <Version>2.3.0</Version>
     <Title>AI TOKEN 用量监控</Title>
     <Product>AI TOKEN 用量监控</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -28,10 +28,23 @@
       distributed, so always embed the native libraries and let the runtime extract them safely.
     -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!--
+      Never compress. A compressed bundle has to be decompressed into memory at startup, so every
+      assembly becomes private committed memory instead of a file-backed mapping the OS can share
+      and page out. Measured on a real session: 368 MB working set / 229 MB private compressed
+      against 243 MB / 151 MB uncompressed, for an EXE that grows 72 MB -> 165 MB. This app starts
+      with Windows and sits in the tray all day, so the resident cost outweighs the download.
+      IncludeAllContentForSelfExtract would give the same memory with a small EXE, but it leaves
+      ~155 MB per version in %TEMP%\.net that nothing ever cleans up - with auto-updates that grows
+      without bound. Pinned here so any `dotnet publish` is safe, not just ones that pass the flag.
+    -->
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
   </PropertyGroup>
   <Target Name="ValidateSingleFileWpfPublish" BeforeTargets="Publish" Condition="'$(PublishSingleFile)' == 'true'">
     <Error Condition="'$(IncludeNativeLibrariesForSelfExtract)' != 'true'"
            Text="WPF single-file publishing requires IncludeNativeLibrariesForSelfExtract=true." />
+    <Error Condition="'$(EnableCompressionInSingleFile)' == 'true'"
+           Text="EnableCompressionInSingleFile costs ~125 MB of resident memory; see the comment on the property." />
   </Target>
   <ItemGroup>
     <!-- Window.Icon and the header badge both load this at runtime. -->

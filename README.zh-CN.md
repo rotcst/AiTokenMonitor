@@ -107,7 +107,7 @@ dotnet run --project CodexWeeklyMonitor.Tests\CodexWeeklyMonitor.Tests.csproj -c
 # 生成自包含单文件 exe
 dotnet publish CodexWeeklyMonitor\CodexWeeklyMonitor.csproj -c Release -r win-x64 `
   --self-contained true -p:PublishSingleFile=true `
-  -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+  -p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
 发布供在线更新识别的 Release 时，Tag 与项目版本应一致（例如 `v1.9.9`），资产命名为

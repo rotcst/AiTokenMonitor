@@ -119,7 +119,7 @@ dotnet run --project CodexWeeklyMonitor.Tests\CodexWeeklyMonitor.Tests.csproj -c
 # 자체 포함 단일 파일 exe 생성
 dotnet publish CodexWeeklyMonitor\CodexWeeklyMonitor.csproj -c Release -r win-x64 `
   --self-contained true -p:PublishSingleFile=true `
-  -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+  -p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
 온라인 업데이트와 호환되는 Release를 만들 때는 태그와 프로젝트 버전을 맞추고(예: `v1.9.9`),

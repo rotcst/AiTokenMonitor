@@ -130,7 +130,7 @@ dotnet run --project CodexWeeklyMonitor.Tests\CodexWeeklyMonitor.Tests.csproj -c
 # produce the self-contained single-file exe
 dotnet publish CodexWeeklyMonitor\CodexWeeklyMonitor.csproj -c Release -r win-x64 `
   --self-contained true -p:PublishSingleFile=true `
-  -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+  -p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
 For an updater-compatible Release, keep the tag and project version aligned (for example `v1.9.9`)
