@@ -1040,6 +1040,14 @@ public partial class MainWindow : Window
             return null;
         }
 
+        // Left exactly where it is if it still lands somewhere on the desktop, second monitor
+        // included. WorkArea describes the primary display only, so clamping unconditionally would
+        // drag an orb the user parked on their other screen back onto their first one.
+        if (IsOnVirtualScreen(position))
+        {
+            return position;
+        }
+
         // Measured against the whole orb window, not the visible disc: PlaceOrbAt offsets the window
         // up and left by the shadow padding, so clamping the disc alone still let the window hang
         // off the edge by exactly that padding.
@@ -1051,6 +1059,32 @@ public partial class MainWindow : Window
         return new Point(
             double.IsFinite(position.X) ? Math.Clamp(position.X, minLeft, maxLeft) : minLeft,
             double.IsFinite(position.Y) ? Math.Clamp(position.Y, minTop, maxTop) : minTop);
+    }
+
+    /// <summary>
+    /// Whether the whole orb window would sit inside the desktop as it is currently arranged.
+    /// </summary>
+    /// <remarks>
+    /// The virtual screen spans every monitor, and WPF reports it in the same device-independent
+    /// units as <see cref="Window.Left"/>, so no DPI conversion is involved. A position saved under
+    /// a monitor that has since been unplugged, or under a different display scale, falls outside
+    /// it and is the case worth rescuing.
+    /// </remarks>
+    private static bool IsOnVirtualScreen(Point orbTopLeft)
+    {
+        if (!double.IsFinite(orbTopLeft.X) || !double.IsFinite(orbTopLeft.Y))
+        {
+            return false;
+        }
+
+        var left = orbTopLeft.X - GaugeWindow.OrbOffsetX;
+        var top = orbTopLeft.Y - GaugeWindow.OrbOffsetY;
+        return left >= SystemParameters.VirtualScreenLeft &&
+               top >= SystemParameters.VirtualScreenTop &&
+               left + GaugeWindow.ShadowCanvasWidth <=
+                   SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth &&
+               top + GaugeWindow.ShadowCanvasHeight <=
+                   SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight;
     }
 
     private bool IsGaugeVisible => _gaugeWindow is { IsVisible: true };

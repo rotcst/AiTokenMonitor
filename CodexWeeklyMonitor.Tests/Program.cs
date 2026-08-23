@@ -2558,6 +2558,14 @@ RunSta("悬浮球位置被钳制在可见工作区内，屏幕外的旧坐标不
     // A position already on screen is left exactly where the user put it.
     var inside = new System.Windows.Point(workArea.Left + 40, workArea.Top + 40);
     Equal(inside, MainWindow.ClampOrbToWorkArea(inside)!.Value);
+
+    // Anywhere on the virtual screen counts, including below the primary work area (over the
+    // taskbar) and on a second monitor - clamping to the primary work area would have moved both.
+    var overTaskbar = new System.Windows.Point(
+        workArea.Left + 40,
+        SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight
+            - GaugeWindow.ShadowCanvasHeight + GaugeWindow.OrbOffsetY);
+    Equal(overTaskbar, MainWindow.ClampOrbToWorkArea(overTaskbar)!.Value);
 });
 
 Run("更新前预检目标目录可写性，避免下载完才失败", () =>
