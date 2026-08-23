@@ -1,4 +1,4 @@
-using System.Drawing;
+﻿using System.Drawing;
 using System.Drawing.Drawing2D;
 using Forms = System.Windows.Forms;
 using DrawingIcon = System.Drawing.Icon;
@@ -57,8 +57,8 @@ internal sealed class TrayIconService : ITrayIconService
     private const string IconUpdate = "update";
     private const string IconGlobe = "globe";
     // The top-level strip runs with ShowCheckMargin off, so WinForms draws no tick for a checked
-    // item. The auto-start entry carries its state in the tag instead and the renderer lights the
-    // glyph and label up in the accent colour when it is on.
+    // item. The auto-start entry carries its state in the tag instead, and the renderer swaps the
+    // launch glyph for a tick in the icon column when it is on.
     private const string IconStartup = "startup";
     private const string IconStartupOn = "startup-on";
     private const string IconExit = "exit";
@@ -453,6 +453,35 @@ internal sealed class TrayIconService : ITrayIconService
                 ]);
         }
 
+        private static void DrawCheck(Graphics g, Rectangle box, Color color, float scale)
+        {
+            if (box.Width <= 0 || box.Height <= 0)
+            {
+                return;
+            }
+
+            var oldMode = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using var pen = new Pen(color, 1.5f * scale)
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round,
+                LineJoin = LineJoin.Round,
+            };
+
+            var side = Math.Min(box.Width, box.Height);
+            var cx = box.Left + (box.Width / 2f);
+            var cy = box.Top + (box.Height / 2f);
+            g.DrawLines(
+                pen,
+                [
+                    new PointF(cx - (side * 0.26f), cy),
+                    new PointF(cx - (side * 0.06f), cy + (side * 0.20f)),
+                    new PointF(cx + (side * 0.28f), cy - (side * 0.22f)),
+                ]);
+            g.SmoothingMode = oldMode;
+        }
+
         protected override void OnRenderSeparator(Forms.ToolStripSeparatorRenderEventArgs e)
         {
             var y = e.Item.Height / 2;
@@ -558,8 +587,13 @@ internal sealed class TrayIconService : ITrayIconService
                     g.DrawLine(pen, r.X, cy, r.Right, cy);
                     g.DrawEllipse(pen, cx - (r.Width * 0.28f), r.Y, r.Width * 0.56f, r.Height);
                     break;
-                case IconStartup:
                 case IconStartupOn:
+                    // The top-level strip runs without a check margin, so WinForms draws no tick of
+                    // its own. Putting one in the icon column is what makes "on" read as on at a
+                    // glance, the same way the language submenu marks the active choice.
+                    DrawCheck(g, Rectangle.Round(r), color, scale);
+                    break;
+                case IconStartup:
                     // Mirrors the update glyph — same baseline, arrow reversed — because this is the
                     // launch direction rather than the download direction.
                     g.DrawLine(pen, cx, r.Bottom - (s * 0.14f), cx, r.Y + (s * 0.12f));
@@ -570,15 +604,6 @@ internal sealed class TrayIconService : ITrayIconService
                         new PointF(cx + (s * 0.24f), r.Y + (s * 0.36f)),
                     ]);
                     g.DrawLine(pen, r.X + (s * 0.14f), r.Bottom, r.Right - (s * 0.14f), r.Bottom);
-                    if (id == IconStartupOn)
-                    {
-                        // A filled badge is the only "on" affordance available here: the strip runs
-                        // without a check margin, so WinForms would draw no tick at all.
-                        using var badge = new SolidBrush(color);
-                        var dot = 3.2f * scale;
-                        g.FillEllipse(badge, r.Right - (dot / 2f), r.Y - (dot / 2f), dot, dot);
-                    }
-
                     break;
                 case IconExit:
                     var pr = RectangleF.Inflate(r, -s * 0.04f, -s * 0.04f);

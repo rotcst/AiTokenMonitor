@@ -57,7 +57,7 @@ public partial class App : System.Windows.Application
         MainWindow = window;
         if (StartupRegistration.IsAutostartLaunch(e.Args))
         {
-            window.ShowStartingHiddenInTray();
+            window.StartHiddenInTray();
         }
         else
         {

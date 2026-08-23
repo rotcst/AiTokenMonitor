@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Globalization;
 using System.IO;
@@ -2516,6 +2516,48 @@ Run("Claude 会话追加后只读新增字节：不丢记录、不重复计数�
             Directory.Delete(root, recursive: true);
         }
     }
+});
+
+RunSta("悬浮球位置被钳制在可见工作区内，屏幕外的旧坐标不再让它消失", () =>
+{
+    var workArea = SystemParameters.WorkArea;
+
+    // Nothing saved yet: nothing to clamp.
+    Equal(null, MainWindow.ClampOrbToWorkArea(null));
+
+    // A coordinate saved under a bigger desktop - a second monitor, or a different display scale
+    // before a reboot - used to place the orb outside the screen, where the switch looked broken.
+    var rescued = MainWindow.ClampOrbToWorkArea(new System.Windows.Point(workArea.Right + 4000, workArea.Bottom + 4000));
+    if (rescued is not { } point)
+    {
+        throw new Exception("屏幕外坐标应被钳制而不是丢弃。");
+    }
+
+    if (point.X < workArea.Left || point.X > workArea.Right || point.Y < workArea.Top || point.Y > workArea.Bottom)
+    {
+        throw new Exception($"钳制后仍在工作区外：{point}。");
+    }
+
+    // The whole orb window has to fit, shadow padding included - PlaceOrbAt offsets it up and left.
+    if (point.X - GaugeWindow.OrbOffsetX < workArea.Left - 0.5 ||
+        point.Y - GaugeWindow.OrbOffsetY < workArea.Top - 0.5 ||
+        point.X - GaugeWindow.OrbOffsetX + GaugeWindow.ShadowCanvasWidth > workArea.Right + 0.5 ||
+        point.Y - GaugeWindow.OrbOffsetY + GaugeWindow.ShadowCanvasHeight > workArea.Bottom + 0.5)
+    {
+        throw new Exception($"钳制后悬浮球窗口仍会溢出工作区：{point}。");
+    }
+
+    // Negative and non-finite coordinates are pulled back too.
+    var negative = MainWindow.ClampOrbToWorkArea(new System.Windows.Point(-9000, -9000));
+    Equal(workArea.Left + GaugeWindow.OrbOffsetX, negative!.Value.X);
+    Equal(workArea.Top + GaugeWindow.OrbOffsetY, negative.Value.Y);
+    var nan = MainWindow.ClampOrbToWorkArea(new System.Windows.Point(double.NaN, double.NaN));
+    Equal(workArea.Left + GaugeWindow.OrbOffsetX, nan!.Value.X);
+    Equal(workArea.Top + GaugeWindow.OrbOffsetY, nan.Value.Y);
+
+    // A position already on screen is left exactly where the user put it.
+    var inside = new System.Windows.Point(workArea.Left + 40, workArea.Top + 40);
+    Equal(inside, MainWindow.ClampOrbToWorkArea(inside)!.Value);
 });
 
 Run("更新前预检目标目录可写性，避免下载完才失败", () =>

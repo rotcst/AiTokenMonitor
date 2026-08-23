@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -58,7 +58,6 @@ public partial class MainWindow : Window
     private bool _refreshInProgress;
     private bool _isClosing;
     private bool _initialized;
-    private bool _startHiddenInTray;
     private ExpandedPanel _expandedPanel = ExpandedPanel.None;
     private GaugeWindow? _gaugeWindow;
     private Point? _gaugeTopLeft;
@@ -128,19 +127,17 @@ public partial class MainWindow : Window
     /// Comes up straight into the tray for the launch Windows performs at sign-in.
     /// </summary>
     /// <remarks>
-    /// The window still has to be shown once: WPF raises <see cref="FrameworkElement.Loaded"/> only
-    /// for a shown window, and every monitor, timer, and placement restore hangs off that event.
-    /// Showing it transparent and unactivated keeps it off the screen and out of the way of
-    /// whatever the user is signing in to do, and <see cref="MainWindow_Loaded"/> hides it for real
-    /// as soon as initialisation reaches a point where hiding is safe.
+    /// The window is never shown, not shown-then-hidden. The first attempt showed it fully
+    /// transparent so that <see cref="FrameworkElement.Loaded"/> would fire, which was wrong twice
+    /// over: <see cref="Window.Opacity"/> is only honoured on a window with
+    /// <see cref="Window.AllowsTransparency"/> set, and clearing
+    /// <see cref="Window.ShowInTaskbar"/> to hide it afterwards makes WPF destroy and recreate the
+    /// HWND, so the first real appearance came up unpainted. Nothing in initialisation needs a
+    /// visible window, so it simply runs without one.
     /// </remarks>
-    internal void ShowStartingHiddenInTray()
+    internal void StartHiddenInTray()
     {
-        _startHiddenInTray = true;
-        ShowActivated = false;
-        ShowInTaskbar = false;
-        Opacity = 0;
-        Show();
+        _ = InitializeAsync();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -152,6 +149,16 @@ public partial class MainWindow : Window
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        await InitializeAsync();
+    }
+
+    /// <summary>
+    /// Brings up placement, monitors, and timers. Driven by <see cref="FrameworkElement.Loaded"/>
+    /// for a normal launch and called directly when the app starts into the tray, so it must not
+    /// depend on the window being visible - nothing here does.
+    /// </summary>
+    private async Task InitializeAsync()
     {
         if (_initialized)
         {
@@ -168,16 +175,6 @@ public partial class MainWindow : Window
         RestorePlacement();
         // Normalise the header captions (arrow suffix) for whatever state placement restored.
         SetExpandedPanel(_expandedPanel);
-        if (_startHiddenInTray)
-        {
-            // Placement is restored first so the window remembers where to reappear, and the
-            // opacity goes back to 1 only once it is hidden, ready for the trip back from the tray.
-            _startHiddenInTray = false;
-            HideToTray();
-            Opacity = 1;
-            ShowActivated = true;
-        }
-
         _localTokenMonitor.Start();
         _claudeMonitor.Start();
         _refreshTimer.Start();
@@ -926,7 +923,9 @@ public partial class MainWindow : Window
         if (placement is { GaugeLeft: { } gaugeLeft, GaugeTop: { } gaugeTop } &&
             double.IsFinite(gaugeLeft) && double.IsFinite(gaugeTop))
         {
-            _gaugeTopLeft = new Point(gaugeLeft, gaugeTop);
+            // Clamped on the way in as well as on the way out, so a coordinate left over from a
+            // display layout that no longer exists is corrected once and then saved corrected.
+            _gaugeTopLeft = ClampOrbToWorkArea(new Point(gaugeLeft, gaugeTop));
         }
         if (placement?.DetailsExpanded == true)
         {
@@ -993,14 +992,11 @@ public partial class MainWindow : Window
 
         // The card and orb own independent positions. The card is only used as the first-run
         // default; every later switch restores the orb's own last position.
-        if (_gaugeTopLeft is { } savedGauge)
+        _gaugeTopLeft = ClampOrbToWorkArea(
+            _gaugeTopLeft ?? (double.IsFinite(Left) && double.IsFinite(Top) ? new Point(Left, Top) : null));
+        if (_gaugeTopLeft is { } orbTopLeft)
         {
-            _gaugeWindow.PlaceOrbAt(savedGauge.X, savedGauge.Y);
-        }
-        else if (double.IsFinite(Left) && double.IsFinite(Top))
-        {
-            _gaugeWindow.PlaceOrbAt(Left, Top);
-            _gaugeTopLeft = new Point(Left, Top);
+            _gaugeWindow.PlaceOrbAt(orbTopLeft.X, orbTopLeft.Y);
         }
 
         _gaugeWindow.Show();
@@ -1026,6 +1022,35 @@ public partial class MainWindow : Window
         Show();
         EnsureRestoredWindow();
         ClampToWorkArea();
+    }
+
+    /// <summary>
+    /// Keeps the orb somewhere the user can actually see it.
+    /// </summary>
+    /// <remarks>
+    /// The card has always been clamped when its placement is restored; the orb never was, so a
+    /// coordinate saved under a different monitor layout or display scale - which is exactly what a
+    /// reboot can change - parked it outside the desktop. The switch worked, the window was shown,
+    /// and nothing appeared: indistinguishable from the feature being broken.
+    /// </remarks>
+    internal static Point? ClampOrbToWorkArea(Point? orbTopLeft)
+    {
+        if (orbTopLeft is not { } position)
+        {
+            return null;
+        }
+
+        // Measured against the whole orb window, not the visible disc: PlaceOrbAt offsets the window
+        // up and left by the shadow padding, so clamping the disc alone still let the window hang
+        // off the edge by exactly that padding.
+        var workArea = SystemParameters.WorkArea;
+        var minLeft = workArea.Left + GaugeWindow.OrbOffsetX;
+        var minTop = workArea.Top + GaugeWindow.OrbOffsetY;
+        var maxLeft = Math.Max(minLeft, workArea.Right - GaugeWindow.ShadowCanvasWidth + GaugeWindow.OrbOffsetX);
+        var maxTop = Math.Max(minTop, workArea.Bottom - GaugeWindow.ShadowCanvasHeight + GaugeWindow.OrbOffsetY);
+        return new Point(
+            double.IsFinite(position.X) ? Math.Clamp(position.X, minLeft, maxLeft) : minLeft,
+            double.IsFinite(position.Y) ? Math.Clamp(position.Y, minTop, maxTop) : minTop);
     }
 
     private bool IsGaugeVisible => _gaugeWindow is { IsVisible: true };
