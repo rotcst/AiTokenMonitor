@@ -2568,6 +2568,47 @@ RunSta("悬浮球位置被钳制在可见工作区内，屏幕外的旧坐标不
     Equal(overTaskbar, MainWindow.ClampOrbToWorkArea(overTaskbar)!.Value);
 });
 
+RunSta("托盘菜单每一项都带图标槽位，否则自绘图标和对勾都不会被调用", () =>
+{
+    using var tray = new TrayIconService();
+    var menu = tray.MenuForTesting;
+
+    // WinForms only routes an item through the image renderer when it has an Image. Without one
+    // the whole DrawGlyph switch is dead code: no icons, and no auto-start tick.
+    foreach (var item in menu.Items.OfType<Forms.ToolStripMenuItem>())
+    {
+        if (string.IsNullOrEmpty(item.Text) || !item.Enabled)
+        {
+            continue;
+        }
+
+        if (item.Tag is null)
+        {
+            throw new Exception($"托盘菜单项「{item.Text}」没有图标标签。");
+        }
+
+        if (item.Image is null)
+        {
+            throw new Exception($"托盘菜单项「{item.Text}」没有图标槽位，自绘图标不会被调用。");
+        }
+    }
+
+    var language = menu.Items.OfType<Forms.ToolStripMenuItem>().First(i => i.DropDownItems.Count > 0);
+    foreach (var item in language.DropDownItems.OfType<Forms.ToolStripMenuItem>())
+    {
+        if (item.Image is null)
+        {
+            throw new Exception($"语言项「{item.Text}」没有图标槽位，当前语言的对勾不会被画出来。");
+        }
+    }
+
+    // The tick is drawn in the image column now, so the check margin must be off - otherwise
+    // WinForms draws its own tick for the checked language and hides the image.
+    var dropDown = (Forms.ToolStripDropDownMenu)language.DropDown;
+    Equal(false, dropDown.ShowCheckMargin);
+    Equal(true, dropDown.ShowImageMargin);
+});
+
 Run("更新前预检目标目录可写性，避免下载完才失败", () =>
 {
     var root = Path.Combine(Path.GetTempPath(), "AiTokenMonitorTests", Guid.NewGuid().ToString("N"));

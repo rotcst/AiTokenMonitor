@@ -77,6 +77,11 @@ internal sealed class TrayIconService : ITrayIconService
     private readonly ModernMenuRenderer _menuRenderer;
     private readonly Font _menuFont;
     private readonly Font _boldMenuFont;
+    // WinForms only routes an item through the image renderer when the item actually has an Image.
+    // Every glyph here is drawn by ModernMenuRenderer rather than supplied as a bitmap, so without
+    // this placeholder the whole DrawGlyph switch was dead code and the menu came up with no icons
+    // at all - which is also why the auto-start tick never appeared.
+    private readonly Bitmap _glyphSlot = new(16, 16);
     private bool _disposed;
 
     public TrayIconService()
@@ -87,24 +92,25 @@ internal sealed class TrayIconService : ITrayIconService
 
         _showItem = CreateMenuItem(() => ShowRequested?.Invoke(this, EventArgs.Empty));
         _showItem.Font = _boldMenuFont;
-        _showItem.Tag = IconShow;
+        SetGlyph(_showItem, IconShow);
         _refreshItem = CreateMenuItem(() => RefreshRequested?.Invoke(this, EventArgs.Empty));
-        _refreshItem.Tag = IconRefresh;
+        SetGlyph(_refreshItem, IconRefresh);
         _updateItem = CreateMenuItem(() => UpdateRequested?.Invoke(this, EventArgs.Empty));
-        _updateItem.Tag = IconUpdate;
+        SetGlyph(_updateItem, IconUpdate);
         _codexStatusItem = CreateStatusItem();
         _claudeStatusItem = CreateStatusItem();
-        _languageItem = new Forms.ToolStripMenuItem { Tag = IconGlobe };
+        _languageItem = new Forms.ToolStripMenuItem();
+        SetGlyph(_languageItem, IconGlobe);
         _startupItem = CreateMenuItem(ToggleStartup);
-        _startupItem.Tag = IconStartup;
+        SetGlyph(_startupItem, IconStartup);
         _exitItem = CreateMenuItem(() => ExitRequested?.Invoke(this, EventArgs.Empty));
-        _exitItem.Tag = IconExit;
+        SetGlyph(_exitItem, IconExit);
 
         foreach (var language in Loc.All)
         {
             var captured = language;
             var item = CreateMenuItem(() => Loc.SetLanguage(captured));
-            item.Tag = language;
+            SetGlyph(item, language);
             _languageItem.DropDownItems.Add(item);
         }
 
@@ -192,6 +198,13 @@ internal sealed class TrayIconService : ITrayIconService
         _claudeStatusItem.Text = claudeStatus;
     }
 
+    /// <summary>Tags an item for the renderer and gives it the Image slot that renderer needs.</summary>
+    private void SetGlyph(Forms.ToolStripMenuItem item, object tag)
+    {
+        item.Tag = tag;
+        item.Image = _glyphSlot;
+    }
+
     private Forms.ToolStripMenuItem CreateMenuItem(Action action)
     {
         var item = new Forms.ToolStripMenuItem
@@ -228,8 +241,10 @@ internal sealed class TrayIconService : ITrayIconService
         dropDown.Renderer = _menuRenderer;
         if (dropDown is Forms.ToolStripDropDownMenu menu)
         {
-            menu.ShowCheckMargin = true;
-            menu.ShowImageMargin = false;
+            // The tick for the active language is drawn by the renderer in the image column, the
+            // same path the top-level glyphs take, rather than through WinForms' check margin.
+            menu.ShowCheckMargin = false;
+            menu.ShowImageMargin = true;
         }
     }
 
@@ -336,6 +351,7 @@ internal sealed class TrayIconService : ITrayIconService
         _menu.Dispose();
         _boldMenuFont.Dispose();
         _menuFont.Dispose();
+        _glyphSlot.Dispose();
         _icon.Dispose();
     }
 
@@ -529,6 +545,16 @@ internal sealed class TrayIconService : ITrayIconService
 
         private static void DrawGlyph(Graphics g, object? tag, Rectangle box, Color color, float scale)
         {
+            if (tag is AppLanguage language)
+            {
+                if (language == Loc.Current)
+                {
+                    DrawCheck(g, box, color, scale);
+                }
+
+                return;
+            }
+
             if (tag is not string id)
             {
                 return;
