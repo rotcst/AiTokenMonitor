@@ -36,6 +36,7 @@ public partial class GaugeWindow : Window
     public GaugeWindow()
     {
         InitializeComponent();
+        _ = new TopmostWindowController(this);
         GaugeHost.Content = _gauge;
         GaugeVersionMenuItem.Header = AppVersion.Display;
     }

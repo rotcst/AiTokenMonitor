@@ -26,6 +26,11 @@ using RadioButton = System.Windows.Controls.RadioButton;
 using ScrollBar = System.Windows.Controls.Primitives.ScrollBar;
 using ToolTip = System.Windows.Controls.ToolTip;
 
+if (args.Contains("--topmost-peer"))
+{
+    return TopmostWindowTests.RunPeer();
+}
+
 var failed = 0;
 using var staTestRunner = new StaTestRunner();
 
@@ -2733,6 +2738,10 @@ Run("开机启动：仅在参数含 --autostart 时静默进入托盘", () =>
     Equal(false, StartupRegistration.IsAutostartLaunch([]));
     Equal(false, StartupRegistration.IsAutostartLaunch(["--autostart-later"]));
 });
+
+RunSta("主窗口和悬浮球恢复实际置顶，隐藏、最小化和关闭置顶仍生效", TopmostWindowTests.RestoresNativeTopmost);
+RunSta("其他进程窗口不能持续遮挡悬浮球，且不抢焦点、不覆盖菜单和对话框", TopmostWindowTests.StaysAboveOtherProcessWithoutFocus);
+RunSta("稳定置顶时不重复重排窗口", TopmostWindowTests.IdleMaintenanceIsQuiet);
 
 Console.WriteLine(failed == 0
     ? "全部测试通过。"

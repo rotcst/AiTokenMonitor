@@ -76,6 +76,7 @@ public partial class MainWindow : Window
         IUpdateService? updateService = null)
     {
         InitializeComponent();
+        _ = new TopmostWindowController(this);
 
         _trayIcon = trayIcon ?? new TrayIconService();
         _updateService = updateService ?? new GitHubUpdateService();
@@ -1423,6 +1424,7 @@ public partial class MainWindow : Window
         {
             _gaugeWindow.Topmost = Topmost;
         }
+        SavePlacement();
     }
 
     private void StartupMenuItem_Click(object sender, RoutedEventArgs e)

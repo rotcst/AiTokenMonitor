@@ -131,6 +131,12 @@ dotnet publish CodexWeeklyMonitor\CodexWeeklyMonitor.csproj -c Release -r win-x6
 온라인 업데이트와 호환되는 Release를 만들 때는 태그와 프로젝트 버전을 맞추고(예: `v1.9.9`),
 `AiTokenMonitor-1.9.9.exe`를 업로드하세요. 클라이언트는 GitHub가 생성한 SHA-256을 검증합니다.
 
+## 항상 위에 표시
+
+주 창과 플로팅 구는 앱 전환, 창 복원 또는 다른 최상위 창에 가려진 뒤에도 키보드 포커스를 가져오지 않고
+창 순서를 복원합니다. 숨기거나 최소화하면 유지 작업이 중지되며, 앱의 메뉴와 업데이트 대화상자는 계속
+위에 표시됩니다. 일반 Windows 바탕 화면에 적용되며 UAC 보안 데스크톱, 잠금 화면, 독점 전체 화면은 제외됩니다.
+
 ## 라이선스
 
 [MIT](LICENSE).
