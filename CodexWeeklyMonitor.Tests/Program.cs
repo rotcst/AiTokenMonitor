@@ -2770,6 +2770,15 @@ Run("无效语言枚举不会破坏语言状态或导致翻译越界", () =>
     }
 });
 
+Run("损坏的 JWT 内容和非数字过期字段不会中断凭据读取", () =>
+{
+    foreach (var json in new[] { "null", "[]", "42", "{\"exp\":\"broken\"}", "{\"exp\":null}" })
+    {
+        var token = "header." + Convert.ToBase64String(Encoding.UTF8.GetBytes(json)) + ".signature";
+        Equal<DateTimeOffset?>(null, CodexAuthStore.ReadJwtExpiry(token));
+    }
+});
+
 Console.WriteLine(failed == 0
     ? "全部测试通过。"
     : $"{failed} 个测试失败。");

@@ -87,7 +87,9 @@ internal static class CodexAuthStore
         try
         {
             using var document = JsonDocument.Parse(DecodeBase64Url(parts[1]));
-            if (!document.RootElement.TryGetProperty("exp", out var exp) ||
+            if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                !document.RootElement.TryGetProperty("exp", out var exp) ||
+                exp.ValueKind != JsonValueKind.Number ||
                 !exp.TryGetInt64(out var seconds))
             {
                 return null;
