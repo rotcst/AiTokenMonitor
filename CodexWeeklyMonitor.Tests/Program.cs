@@ -2779,6 +2779,51 @@ Run("损坏的 JWT 内容和非数字过期字段不会中断凭据读取", () =
     }
 });
 
+Run("更新下载在收到响应头后停滞仍会超时并清理临时文件", () =>
+{
+    var release = new UpdateRelease(new Version(99, 5, 0), "timeout-test-" + Guid.NewGuid().ToString("N"),
+        new Uri("https://github.com/rotcst/AiTokenMonitor/releases"), null,
+        new UpdateAsset(new Uri("https://github.com/rotcst/AiTokenMonitor/test.exe"), 32, new string('0', 64)));
+    var directory = UpdateInstaller.GetUpdateDirectory(release.TagName);
+    using var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new StreamContent(new StalledDownloadStream()),
+    });
+    using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(100) };
+    using var service = new GitHubUpdateService(client);
+    using var watchdog = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+    try
+    {
+        try
+        {
+            service.DownloadAsync(release, cancellationToken: watchdog.Token).GetAwaiter().GetResult();
+            throw new Exception("停滞的下载没有报告超时。");
+        }
+        catch (UpdateServiceException exception)
+        {
+            Equal("update.downloadFailed", exception.ResourceKey);
+        }
+        Equal(false, watchdog.IsCancellationRequested);
+        Equal(false, Directory.EnumerateFiles(directory).Any());
+
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        try
+        {
+            service.DownloadAsync(release, cancellationToken: canceled.Token).GetAwaiter().GetResult();
+            throw new Exception("主动取消下载没有生效。");
+        }
+        catch (OperationCanceledException)
+        {
+            // User cancellation must remain distinguishable from a stalled connection.
+        }
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+    }
+});
+
 Console.WriteLine(failed == 0
     ? "全部测试通过。"
     : $"{failed} 个测试失败。");
@@ -2934,6 +2979,15 @@ sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage
         CancellationToken cancellationToken)
     {
         return Task.FromResult(responder(request));
+    }
+}
+
+sealed class StalledDownloadStream : MemoryStream
+{
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        return 0;
     }
 }
 

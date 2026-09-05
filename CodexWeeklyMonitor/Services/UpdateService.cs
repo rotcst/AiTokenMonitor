@@ -108,12 +108,17 @@ internal sealed class GitHubUpdateService : IUpdateService
         }
 
         var temporary = destination + $".{Guid.NewGuid():N}.download";
+        // ResponseHeadersRead ends HttpClient.Timeout at the headers. Keep the same deadline
+        // active while streaming the body so a stalled connection cannot strand the update UI.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(_httpClient.Timeout);
+        var downloadToken = timeout.Token;
         try
         {
             using var response = await _httpClient.GetAsync(
                     release.Asset.DownloadUrl,
                     HttpCompletionOption.ResponseHeadersRead,
-                    cancellationToken)
+                    downloadToken)
                 .ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
@@ -124,7 +129,7 @@ internal sealed class GitHubUpdateService : IUpdateService
                 throw new UpdateServiceException("update.invalidMetadata");
             }
 
-            await using var input = await response.Content.ReadAsStreamAsync(cancellationToken)
+            await using var input = await response.Content.ReadAsStreamAsync(downloadToken)
                 .ConfigureAwait(false);
             var buffer = new byte[128 * 1024];
             long total = 0;
@@ -138,13 +143,13 @@ internal sealed class GitHubUpdateService : IUpdateService
             {
                 while (true)
                 {
-                    var read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                    var read = await input.ReadAsync(buffer, downloadToken).ConfigureAwait(false);
                     if (read == 0)
                     {
                         break;
                     }
 
-                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                    await output.WriteAsync(buffer.AsMemory(0, read), downloadToken).ConfigureAwait(false);
                     total += read;
                     if (total > release.Asset.Size || total > MaximumAssetSize)
                     {
@@ -154,11 +159,11 @@ internal sealed class GitHubUpdateService : IUpdateService
                     progress?.Report(Math.Clamp((double)total / release.Asset.Size, 0, 1));
                 }
 
-                await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+                await output.FlushAsync(downloadToken).ConfigureAwait(false);
             }
 
             if (total != release.Asset.Size ||
-                !await HasExpectedSha256Async(temporary, release.Asset.Sha256, cancellationToken)
+                !await HasExpectedSha256Async(temporary, release.Asset.Sha256, downloadToken)
                     .ConfigureAwait(false))
             {
                 throw new UpdateServiceException("update.integrityFailed");
@@ -167,6 +172,10 @@ internal sealed class GitHubUpdateService : IUpdateService
             File.Move(temporary, destination, overwrite: true);
             progress?.Report(1);
             return destination;
+        }
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new UpdateServiceException("update.downloadFailed", exception);
         }
         catch (UpdateServiceException)
         {
