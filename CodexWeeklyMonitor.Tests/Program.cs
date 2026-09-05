@@ -2743,6 +2743,18 @@ RunSta("主窗口和悬浮球恢复实际置顶，隐藏、最小化和关闭置
 RunSta("其他进程窗口不能持续遮挡悬浮球，且不抢焦点、不覆盖菜单和对话框", TopmostWindowTests.StaysAboveOtherProcessWithoutFocus);
 RunSta("稳定置顶时不重复重排窗口", TopmostWindowTests.IdleMaintenanceIsQuiet);
 
+Run("服务端要求的一小时限流不能被本地十五分钟上限截短", () =>
+{
+    var now = DateTimeOffset.UtcNow;
+    var throttle = new PollThrottle(TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(15));
+    throttle.ReportThrottled(now, TimeSpan.FromHours(1));
+    Equal(false, throttle.TryAcquire(now.AddMinutes(16), force: true));
+    Equal(TimeSpan.FromMinutes(40), throttle.RemainingPenalty(now.AddMinutes(20)));
+    Equal(true, throttle.TryAcquire(now.AddHours(1)));
+    throttle.ReportThrottled(now.AddHours(1), null);
+    Equal(TimeSpan.FromMinutes(15), throttle.CurrentBackoff);
+});
+
 Console.WriteLine(failed == 0
     ? "全部测试通过。"
     : $"{failed} 个测试失败。");

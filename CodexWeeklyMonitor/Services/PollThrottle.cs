@@ -78,13 +78,16 @@ internal sealed class PollThrottle(TimeSpan minimumInterval, TimeSpan maximumBac
     {
         lock (_gate)
         {
-            var next = retryAfter is { } hint && hint > TimeSpan.Zero
+            // The cap is for our own exponential fallback, never the server's Retry-After.
+            // Shortening a longer server penalty sends requests while the account is still limited.
+            var next = _backoff == TimeSpan.Zero
+                ? minimumInterval
+                : _backoff >= maximumBackoff / 2 ? maximumBackoff : _backoff + _backoff;
+            _backoff = retryAfter is { } hint && hint > TimeSpan.Zero
                 ? hint
-                : _backoff == TimeSpan.Zero
-                    ? minimumInterval
-                    : _backoff + _backoff;
-            _backoff = next > maximumBackoff ? maximumBackoff : next;
-            _penaltyUntil = now + _backoff;
+                : next > maximumBackoff ? maximumBackoff : next;
+            var remaining = DateTimeOffset.MaxValue - now;
+            _penaltyUntil = now + (_backoff > remaining ? remaining : _backoff);
             _nextAllowedAt = _penaltyUntil;
         }
     }
