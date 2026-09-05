@@ -2755,6 +2755,21 @@ Run("服务端要求的一小时限流不能被本地十五分钟上限截短", 
     Equal(TimeSpan.FromMinutes(15), throttle.CurrentBackoff);
 });
 
+Run("无效语言枚举不会破坏语言状态或导致翻译越界", () =>
+{
+    var original = Loc.Current;
+    try
+    {
+        Loc.SetLanguage((AppLanguage)(-1));
+        Equal(original, Loc.Current);
+        Equal("周额度", Loc.T("card.weekly"));
+    }
+    finally
+    {
+        Loc.SetLanguage(original);
+    }
+});
+
 Console.WriteLine(failed == 0
     ? "全部测试通过。"
     : $"{failed} 个测试失败。");

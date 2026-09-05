@@ -53,6 +53,11 @@ public static class Loc
 
     public static void SetLanguage(AppLanguage language)
     {
+        if (!Enum.IsDefined(language))
+        {
+            return;
+        }
+
         lock (Gate)
         {
             if (_current == language)
@@ -94,7 +99,7 @@ public static class Loc
         }
 
         var index = (int)language;
-        var value = index < translations.Length ? translations[index] : null;
+        var value = index >= 0 && index < translations.Length ? translations[index] : null;
         // Fall back to English, then Chinese, so a missing translation never shows a blank.
         return value
                ?? translations.ElementAtOrDefault((int)AppLanguage.English)
@@ -136,7 +141,8 @@ public static class Loc
         try
         {
             if (File.Exists(StorePath) &&
-                Enum.TryParse<AppLanguage>(File.ReadAllText(StorePath).Trim(), out var stored))
+                Enum.TryParse<AppLanguage>(File.ReadAllText(StorePath).Trim(), out var stored) &&
+                Enum.IsDefined(stored))
             {
                 return stored;
             }
