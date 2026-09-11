@@ -41,7 +41,7 @@ internal static class Strings
         // Rate-window cards
         ["card.fiveHour"] = ["5 小时额度", "5-hour limit", "5시간 한도"],
         ["card.weekly"] = ["周额度", "Weekly limit", "주간 한도"],
-        ["card.lunaReserve"] = ["Luna 储备额度", "Luna reserve", "Luna 예비 한도"],
+        ["card.lunaReserve"] = ["Luna 储备额度", "Luna Reserve", "Luna 예비 한도"],
         ["card.used"] = ["已用 {0}%", "{0}% used", "{0}% 사용"],
         ["card.usedApprox"] = ["约已用 {0}% · 旧数据", "~{0}% used · stale", "약 {0}% 사용 · 이전 데이터"],
         ["card.notProvided"] = ["未提供", "Not provided", "제공 안 됨"],

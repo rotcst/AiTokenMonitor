@@ -511,10 +511,10 @@
                             </Grid.RowDefinitions>
                             <Grid>
                                 <TextBlock x:Name="LunaCaption"
-                                           Text="Luna"
+                                           Text="{loc:Str card.lunaReserve}"
                                            AutomationProperties.Name="{loc:Str card.lunaReserve}"
                                            VerticalAlignment="Center"
-                                           FontSize="11"
+                                           FontSize="8.5"
                                            Foreground="{StaticResource MutedTextBrush}" />
                                 <TextBlock x:Name="LunaRemainingText"
                                            Text="--%"

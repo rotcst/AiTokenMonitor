@@ -300,9 +300,9 @@ public sealed class GaugeControl : UserControl
     private static string PeriodLabel(GaugeQuotaPeriod period) =>
         period switch
         {
-            GaugeQuotaPeriod.FiveHour => "5H",
+            GaugeQuotaPeriod.FiveHour => "H",
             GaugeQuotaPeriod.Weekly => "W",
-            GaugeQuotaPeriod.LunaReserve => "LUNA",
+            GaugeQuotaPeriod.LunaReserve => "L",
             _ => "--",
         };
 
@@ -415,7 +415,7 @@ public sealed class GaugeControl : UserControl
             };
             _reset = new TextBlock
             {
-                Text = "5H · --",
+                Text = "H · --",
                 // The reset row sits near the lower circular edge. Keep a small horizontal inset so
                 // a long Luna label cannot be clipped by the ellipse while the text remains readable.
                 Width = Width - 8,

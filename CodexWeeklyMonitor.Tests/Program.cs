@@ -1640,8 +1640,8 @@ RunSta("悬浮球 Codex 循环切换 5 小时、周和 Luna 储备额度", () =>
     Equal("CLAUDE", gauge.ClaudeTitleText);
     Equal("56%", gauge.CodexPercentText);
     Equal("75%", gauge.ClaudePercentText);
-    Equal("5H · 4h 30m", gauge.CodexResetText);
-    Equal("5H · 47m", gauge.ClaudeResetText);
+    Equal("H · 4h 30m", gauge.CodexResetText);
+    Equal("H · 47m", gauge.ClaudeResetText);
 
     gauge.ToggleProvider(GaugeProvider.Codex);
     Equal(GaugeQuotaPeriod.Weekly, gauge.CodexPeriod);
@@ -1653,7 +1653,7 @@ RunSta("悬浮球 Codex 循环切换 5 小时、周和 Luna 储备额度", () =>
     gauge.ToggleProvider(GaugeProvider.Codex);
     Equal(GaugeQuotaPeriod.LunaReserve, gauge.CodexPeriod);
     Equal("28%", gauge.CodexPercentText);
-    Equal("LUNA · 1d 0h", gauge.CodexResetText);
+    Equal("L · 1d 0h", gauge.CodexResetText);
 
     gauge.ToggleProvider(GaugeProvider.Codex);
     Equal(GaugeQuotaPeriod.FiveHour, gauge.CodexPeriod);
@@ -1871,13 +1871,16 @@ Run("界面语言可切换且默认跟随系统", () =>
     {
         CodexWeeklyMonitor.Services.Loc.SetLanguage(CodexWeeklyMonitor.Services.AppLanguage.English);
         Equal("Weekly limit", CodexWeeklyMonitor.Services.Loc.T("card.weekly"));
+        Equal("Luna Reserve", CodexWeeklyMonitor.Services.Loc.T("card.lunaReserve"));
         Equal("42% used", CodexWeeklyMonitor.Services.Loc.T("card.used", 42));
 
         CodexWeeklyMonitor.Services.Loc.SetLanguage(CodexWeeklyMonitor.Services.AppLanguage.Korean);
         Equal("주간 한도", CodexWeeklyMonitor.Services.Loc.T("card.weekly"));
+        Equal("Luna 예비 한도", CodexWeeklyMonitor.Services.Loc.T("card.lunaReserve"));
 
         CodexWeeklyMonitor.Services.Loc.SetLanguage(CodexWeeklyMonitor.Services.AppLanguage.Chinese);
         Equal("周额度", CodexWeeklyMonitor.Services.Loc.T("card.weekly"));
+        Equal("Luna 储备额度", CodexWeeklyMonitor.Services.Loc.T("card.lunaReserve"));
 
         // Missing key falls back to the key itself rather than a blank.
         Equal("no.such.key", CodexWeeklyMonitor.Services.Loc.T("no.such.key"));
@@ -2282,7 +2285,7 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             "CODEX实时监控中",
             ((TextBlock)mainWindow.FindName("ConnectionText")).Text);
         Equal("84%", ((TextBlock)mainWindow.FindName("LunaRemainingText")).Text);
-        Equal("Luna", ((TextBlock)mainWindow.FindName("LunaCaption")).Text);
+        Equal("Luna 储备额度", ((TextBlock)mainWindow.FindName("LunaCaption")).Text);
         var fiveHourQuotaCard = mainWindow.FindName("FiveHourQuotaCard") as Border
             ?? throw new Exception("未找到 5 小时额度卡容器。");
         var weeklyQuotaCard = mainWindow.FindName("WeeklyQuotaCard") as Border
