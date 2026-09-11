@@ -2448,6 +2448,37 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             Equal(TextTrimming.CharacterEllipsis, resetText.TextTrimming);
         }
 
+        var fiveHourProgress = (System.Windows.Controls.ProgressBar)mainWindow.FindName("FiveHourProgress");
+        var weeklyProgress = (System.Windows.Controls.ProgressBar)mainWindow.FindName("WeeklyProgress");
+        var lunaProgress = (System.Windows.Controls.ProgressBar)mainWindow.FindName("LunaProgress");
+        // The visual length follows remaining quota: 100% remaining is full and 0% is empty.
+        foreach (var (usedPercent, expectedRemaining) in new[]
+                 {
+                     (0, 100),
+                     (10, 90),
+                     (90, 10),
+                     (100, 0),
+                 })
+        {
+            var window = new RateLimitWindow(usedPercent, codexFetchedAt.AddHours(2), 300);
+            var progressSnapshot = codexSnapshot with
+            {
+                RateLimits = codexSnapshot.RateLimits with
+                {
+                    FiveHour = window,
+                    Weekly = window,
+                    LunaReserve = window,
+                },
+            };
+            applyCodexSnapshot.Invoke(mainWindow, [progressSnapshot]);
+            Equal((double)expectedRemaining, fiveHourProgress.Value);
+            Equal((double)expectedRemaining, weeklyProgress.Value);
+            Equal((double)expectedRemaining, lunaProgress.Value);
+        }
+
+        applyCodexSnapshot.Invoke(mainWindow, [codexSnapshot]);
+        mainWindow.UpdateLayout();
+
         // A Pro response can omit the 300-minute bucket. The main panel follows the actual
         // response just like the orb: hide that card and reclaim its column, while a Plus response
         // with FiveHour present keeps the card visible.

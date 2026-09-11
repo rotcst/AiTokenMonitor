@@ -769,7 +769,10 @@ public partial class MainWindow : Window
             ? $"~{window.RemainingPercent}%"
             : $"{window.RemainingPercent}%";
         usedText.Text = Loc.T(isStale ? "card.usedApprox" : "card.used", window.UsedPercent);
-        progress.Value = window.UsedPercent;
+        // The bar represents the quota that remains available: full at 100% remaining and
+        // empty when the window is exhausted. Keep the color tied to usage so warnings still
+        // become more prominent as the account approaches its limit.
+        progress.Value = window.RemainingPercent;
         progress.Foreground = GetUsageBrush(window.UsedPercent);
         resetText.Text = FormatResetCardTime(window.ResetsAt);
     }
