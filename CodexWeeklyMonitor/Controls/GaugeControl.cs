@@ -30,6 +30,7 @@ internal enum GaugeQuotaPeriod
 {
     FiveHour,
     Weekly,
+    LunaReserve,
 }
 
 /// <summary>
@@ -41,8 +42,8 @@ internal enum GaugeQuotaPeriod
 /// The whole control is clipped to a circle; a thin seam splits it. Each chamber clips its own liquid
 /// so waves never bleed across the divider. The surface is two scrolling sine bands (a slow, faint
 /// back swell and a quicker front ripple) whose horizontal drift runs forever on their own storyboards.
-/// <see cref="Update"/> supplies both quota windows. Clicking either chamber switches that provider
-/// independently between its 5-hour and weekly windows.
+/// <see cref="Update"/> supplies the provider quota windows. Clicking the Codex chamber cycles through
+/// its 5-hour, weekly, and Luna Reserve windows; Claude keeps its 5-hour/weekly pair.
 /// </remarks>
 public sealed class GaugeControl : UserControl
 {
@@ -59,6 +60,7 @@ public sealed class GaugeControl : UserControl
     private readonly Chamber _claude;
     private RateLimitWindow? _codexFiveHour;
     private RateLimitWindow? _codexWeekly;
+    private RateLimitWindow? _codexLunaReserve;
     private RateLimitWindow? _claudeFiveHour;
     private RateLimitWindow? _claudeWeekly;
     private GaugeQuotaPeriod _codexPeriod = GaugeQuotaPeriod.FiveHour;
@@ -101,18 +103,20 @@ public sealed class GaugeControl : UserControl
         Loaded += (_, _) => _countdownTimer.Start();
         Unloaded += (_, _) => _countdownTimer.Stop();
 
-        Update(null, null, null, null);
+        Update(null, null, null, null, null);
     }
 
-    /// <summary>Supplies both quota windows for each provider without changing the user's selection.</summary>
+    /// <summary>Supplies all selectable quota windows without changing the user's selection.</summary>
     public void Update(
         RateLimitWindow? codexFiveHour,
         RateLimitWindow? codexWeekly,
+        RateLimitWindow? codexLunaReserve,
         RateLimitWindow? claudeFiveHour,
         RateLimitWindow? claudeWeekly)
     {
         _codexFiveHour = codexFiveHour;
         _codexWeekly = codexWeekly;
+        _codexLunaReserve = codexLunaReserve;
         _claudeFiveHour = claudeFiveHour;
         _claudeWeekly = claudeWeekly;
 
@@ -120,14 +124,24 @@ public sealed class GaugeControl : UserControl
             ref _codexPeriod,
             ref _codexPeriodInitialized,
             codexFiveHour,
-            codexWeekly);
+            codexWeekly,
+            codexLunaReserve);
         InitializePeriod(
             ref _claudePeriod,
             ref _claudePeriodInitialized,
             claudeFiveHour,
-            claudeWeekly);
+            claudeWeekly,
+            null);
         RefreshReadouts();
     }
+
+    /// <summary>Compatibility overload for callers that only know the original two Codex windows.</summary>
+    public void Update(
+        RateLimitWindow? codexFiveHour,
+        RateLimitWindow? codexWeekly,
+        RateLimitWindow? claudeFiveHour,
+        RateLimitWindow? claudeWeekly) =>
+        Update(codexFiveHour, codexWeekly, null, claudeFiveHour, claudeWeekly);
 
     internal static string FormatPercent(int? percent) => percent is null ? "--" : $"{percent}%";
 
@@ -151,7 +165,7 @@ public sealed class GaugeControl : UserControl
     {
         if (provider == GaugeProvider.Codex)
         {
-            _codexPeriod = Toggle(_codexPeriod);
+            _codexPeriod = NextAvailableCodexPeriod();
             _codexPeriodInitialized = true;
         }
         else
@@ -219,36 +233,78 @@ public sealed class GaugeControl : UserControl
     private void RefreshReadouts()
     {
         var now = _clock();
-        _codex.SetWindow(SelectWindow(_codexFiveHour, _codexWeekly, _codexPeriod), _codexPeriod, now);
-        _claude.SetWindow(SelectWindow(_claudeFiveHour, _claudeWeekly, _claudePeriod), _claudePeriod, now);
+        _codex.SetWindow(
+            SelectWindow(_codexFiveHour, _codexWeekly, _codexLunaReserve, _codexPeriod),
+            _codexPeriod,
+            now);
+        _claude.SetWindow(SelectWindow(_claudeFiveHour, _claudeWeekly, null, _claudePeriod), _claudePeriod, now);
     }
 
     private static void InitializePeriod(
         ref GaugeQuotaPeriod period,
         ref bool initialized,
         RateLimitWindow? fiveHour,
-        RateLimitWindow? weekly)
+        RateLimitWindow? weekly,
+        RateLimitWindow? lunaReserve)
     {
-        if (initialized || (fiveHour is null && weekly is null))
+        if (initialized || (fiveHour is null && weekly is null && lunaReserve is null))
         {
             return;
         }
 
-        period = fiveHour is not null ? GaugeQuotaPeriod.FiveHour : GaugeQuotaPeriod.Weekly;
+        period = fiveHour is not null
+            ? GaugeQuotaPeriod.FiveHour
+            : weekly is not null
+                ? GaugeQuotaPeriod.Weekly
+                : GaugeQuotaPeriod.LunaReserve;
         initialized = true;
     }
 
     private static RateLimitWindow? SelectWindow(
         RateLimitWindow? fiveHour,
         RateLimitWindow? weekly,
+        RateLimitWindow? lunaReserve,
         GaugeQuotaPeriod period) =>
-        period == GaugeQuotaPeriod.FiveHour ? fiveHour : weekly;
+        period switch
+        {
+            GaugeQuotaPeriod.FiveHour => fiveHour,
+            GaugeQuotaPeriod.Weekly => weekly,
+            GaugeQuotaPeriod.LunaReserve => lunaReserve,
+            _ => null,
+        };
+
+    private GaugeQuotaPeriod NextAvailableCodexPeriod()
+    {
+        var periods = new[]
+        {
+            GaugeQuotaPeriod.FiveHour,
+            GaugeQuotaPeriod.Weekly,
+            GaugeQuotaPeriod.LunaReserve,
+        };
+        var currentIndex = Array.IndexOf(periods, _codexPeriod);
+        for (var offset = 1; offset <= periods.Length; offset++)
+        {
+            var candidate = periods[(currentIndex + offset) % periods.Length];
+            if (SelectWindow(_codexFiveHour, _codexWeekly, _codexLunaReserve, candidate) is not null)
+            {
+                return candidate;
+            }
+        }
+
+        return _codexPeriod;
+    }
 
     private static GaugeQuotaPeriod Toggle(GaugeQuotaPeriod period) =>
         period == GaugeQuotaPeriod.FiveHour ? GaugeQuotaPeriod.Weekly : GaugeQuotaPeriod.FiveHour;
 
     private static string PeriodLabel(GaugeQuotaPeriod period) =>
-        period == GaugeQuotaPeriod.FiveHour ? "5H" : "W";
+        period switch
+        {
+            GaugeQuotaPeriod.FiveHour => "5H",
+            GaugeQuotaPeriod.Weekly => "W",
+            GaugeQuotaPeriod.LunaReserve => "LUNA",
+            _ => "--",
+        };
 
     // A faint vertical seam between the two tanks, fading out top and bottom so it reads as a divider,
     // not a hard line drawn across the glass.

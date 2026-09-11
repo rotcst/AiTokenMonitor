@@ -39,6 +39,7 @@ public static class UsageDetailBuilder
         var quota = new List<UsageDetailItem>();
         AddWindow(quota, Loc.T("card.fiveHour"), snapshot.RateLimits.FiveHour);
         AddWindow(quota, Loc.T("card.weekly"), snapshot.RateLimits.Weekly);
+        AddWindow(quota, Loc.T("card.lunaReserve"), snapshot.RateLimits.LunaReserve);
         foreach (var model in detail?.ModelLimits ?? [])
         {
             AddWindow(quota, model.Name, model.Window, model.LimitReached ? Loc.T("val.exhaustedShort") : null);

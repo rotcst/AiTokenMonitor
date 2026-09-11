@@ -9,7 +9,8 @@ namespace CodexWeeklyMonitor;
 
 /// <summary>
 /// The compact "orb" mode: a small circular racing-style gauge showing Codex and Claude usage at a
-/// glance. Clicking either half switches that provider's quota window; dragging moves the orb.
+/// glance. Clicking the Codex half cycles its 5-hour, weekly, and Luna Reserve windows; clicking
+/// the Claude half switches its 5-hour/weekly window. Dragging moves the orb.
 /// </summary>
 public partial class GaugeWindow : Window
 {
@@ -62,9 +63,18 @@ public partial class GaugeWindow : Window
     public void SetWindows(
         RateLimitWindow? codexFiveHour,
         RateLimitWindow? codexWeekly,
+        RateLimitWindow? codexLunaReserve,
         RateLimitWindow? claudeFiveHour,
         RateLimitWindow? claudeWeekly) =>
-        _gauge.Update(codexFiveHour, codexWeekly, claudeFiveHour, claudeWeekly);
+        _gauge.Update(codexFiveHour, codexWeekly, codexLunaReserve, claudeFiveHour, claudeWeekly);
+
+    /// <summary>Compatibility overload for callers that only know the original two Codex windows.</summary>
+    public void SetWindows(
+        RateLimitWindow? codexFiveHour,
+        RateLimitWindow? codexWeekly,
+        RateLimitWindow? claudeFiveHour,
+        RateLimitWindow? claudeWeekly) =>
+        SetWindows(codexFiveHour, codexWeekly, null, claudeFiveHour, claudeWeekly);
 
     /// <summary>
     /// Positions the visible orb at the requested screen coordinate while keeping the transparent

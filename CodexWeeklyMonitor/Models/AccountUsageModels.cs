@@ -13,13 +13,18 @@ public sealed record CreditBalance(
     bool HasCredits,
     bool Unlimited);
 
+/// <summary>
+/// The primary Codex quota windows plus the optional Luna Reserve bucket exposed by newer
+/// app-server and official usage responses.
+/// </summary>
 public sealed record AccountRateLimits(
     RateLimitWindow? FiveHour,
     RateLimitWindow? Weekly,
     CreditBalance? Credits,
     long? AvailableResetCount,
     string? PlanType,
-    DateTimeOffset FetchedAt);
+    DateTimeOffset FetchedAt,
+    RateLimitWindow? LunaReserve = null);
 
 public sealed record DailyTokenUsage(DateOnly Date, long Tokens)
 {

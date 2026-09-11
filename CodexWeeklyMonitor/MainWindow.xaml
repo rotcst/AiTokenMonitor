@@ -376,6 +376,8 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="10" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
                     <Border Grid.Column="0"
@@ -464,6 +466,55 @@
                                            FontSize="9.5"
                                            Foreground="{StaticResource SubtleTextBrush}" />
                                 <TextBlock x:Name="WeeklyResetText"
+                                           Text="{loc:Str card.waitingData}"
+                                           HorizontalAlignment="Right"
+                                           FontSize="9.5"
+                                           Foreground="{StaticResource SubtleTextBrush}" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="4"
+                            Padding="11,9"
+                            Background="{StaticResource CardBrush}"
+                            BorderBrush="{StaticResource CardBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="24" />
+                                <RowDefinition Height="8" />
+                                <RowDefinition Height="5" />
+                                <RowDefinition Height="8" />
+                                <RowDefinition Height="15" />
+                            </Grid.RowDefinitions>
+                            <Grid>
+                                <TextBlock x:Name="LunaCaption"
+                                           Text="Luna"
+                                           AutomationProperties.Name="{loc:Str card.lunaReserve}"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{StaticResource MutedTextBrush}" />
+                                <TextBlock x:Name="LunaRemainingText"
+                                           Text="--%"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           FontSize="20"
+                                           FontWeight="SemiBold"
+                                           Foreground="#F5F7FA" />
+                            </Grid>
+                            <ProgressBar x:Name="LunaProgress"
+                                         Grid.Row="2"
+                                         Minimum="0"
+                                         Maximum="100"
+                                         Value="0"
+                                         Style="{StaticResource RoundedProgressStyle}" />
+                            <Grid Grid.Row="4">
+                                <TextBlock x:Name="LunaUsedText"
+                                           Text="已用 --%"
+                                           FontSize="9.5"
+                                           Foreground="{StaticResource SubtleTextBrush}" />
+                                <TextBlock x:Name="LunaResetText"
                                            Text="{loc:Str card.waitingData}"
                                            HorizontalAlignment="Right"
                                            FontSize="9.5"

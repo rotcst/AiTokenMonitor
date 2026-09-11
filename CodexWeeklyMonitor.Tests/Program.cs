@@ -183,6 +183,35 @@ Run("解析 5 小时、周额度、余额与可用重置次数", () =>
     Equal<long?>(2, limits.AvailableResetCount);
 });
 
+Run("解析 app-server 的 Luna Reserve 附加额度桶", () =>
+{
+    using var document = JsonDocument.Parse("""
+        {
+          "rateLimitsByLimitId": {
+            "codex": {
+              "limitId": "codex",
+              "primary": { "usedPercent": 20, "windowDurationMins": 300 },
+              "secondary": { "usedPercent": 40, "windowDurationMins": 10080 }
+            },
+            "gpt-reserve": {
+              "limitId": "gpt-reserve",
+              "limitName": "Luna Reserve",
+              "primary": {
+                "usedPercent": 37,
+                "windowDurationMins": 10080,
+                "resetsAt": 1785290000
+              }
+            }
+          }
+        }
+        """);
+
+    var limits = QuotaParser.ParseAccountRateLimits(document.RootElement);
+    Equal(37, limits.LunaReserve!.UsedPercent);
+    Equal(63, limits.LunaReserve.RemainingPercent);
+    Equal(10080L, limits.LunaReserve.DurationMinutes);
+});
+
 Run("解析并归一化逐日 Token 历史", () =>
 {
     using var document = JsonDocument.Parse("""
@@ -551,6 +580,48 @@ Run("解析 Codex 官方用量接口的周额度、分模型额度、余额与�
     Equal(false, detail.LimitDescription.Contains("{time}", StringComparison.Ordinal));
 });
 
+Run("解析 Codex 官方用量接口的 Luna Reserve 附加额度", () =>
+{
+    using var document = JsonDocument.Parse("""
+        {
+          "plan_type": "pro",
+          "rate_limit": {
+            "primary_window": {
+              "used_percent": 15,
+              "limit_window_seconds": 18000,
+              "reset_at": 1785290000
+            },
+            "secondary_window": {
+              "used_percent": 28,
+              "limit_window_seconds": 604800,
+              "reset_at": 1785800000
+            }
+          },
+          "additional_rate_limits": [
+            {
+              "limit_name": "gpt-reserve",
+              "metered_feature": "base_model_inference",
+              "rate_limit": {
+                "allowed": true,
+                "limit_reached": false,
+                "primary_window": {
+                  "used_percent": 33,
+                  "limit_window_seconds": 604800,
+                  "reset_at": 1785900000
+                }
+              }
+            }
+          ]
+        }
+        """);
+
+    var (limits, detail) = CodexApiParser.ParseUsage(document.RootElement, DateTimeOffset.UnixEpoch, null);
+    Equal(33, limits.LunaReserve!.UsedPercent);
+    Equal(67, limits.LunaReserve.RemainingPercent);
+    Equal(10_080L, limits.LunaReserve.DurationMinutes);
+    Equal(0, detail.ModelLimits.Count);
+});
+
 Run("不会把 Codex 的 5 小时窗口误报成周额度", () =>
 {
     using var document = JsonDocument.Parse("""
@@ -629,7 +700,8 @@ Run("合并 Codex 数据时由 app-server 额度窗口决定头部百分比", ()
             Credits: new CreditBalance("12.50", true, false),
             AvailableResetCount: 2,
             PlanType: "plus",
-            FetchedAt: apiFetchedAt),
+            FetchedAt: apiFetchedAt,
+            LunaReserve: new RateLimitWindow(29, resetAt, 10_080)),
         TokenUsage: new AccountTokenUsage(
             LifetimeTokens: 42,
             PeakDailyTokens: 42,
@@ -659,6 +731,7 @@ Run("合并 Codex 数据时由 app-server 额度窗口决定头部百分比", ()
     Equal(81, merged.RateLimits.Weekly.RemainingPercent);
     Equal("12.50", merged.RateLimits.Credits!.Balance);
     Equal<long?>(3, merged.RateLimits.AvailableResetCount);
+    Equal(29, merged.RateLimits.LunaReserve!.UsedPercent);
     Equal<long?>(42, merged.TokenUsage!.LifetimeTokens);
     Equal("someone@example.com", merged.Detail!.Email);
     Equal("source.appServerWithOfficialDetails", merged.Detail.Source);
@@ -1508,16 +1581,17 @@ Run("重置时间显示本地月日和时分", () =>
     Equal("7月29日 14:30 重置", MainWindow.FormatResetTime(resetAt));
 });
 
-RunSta("悬浮球左右区域独立切换 5 小时和周额度", () =>
+RunSta("悬浮球 Codex 循环切换 5 小时、周和 Luna 储备额度", () =>
 {
     var now = new DateTimeOffset(2026, 7, 30, 12, 0, 0, TimeSpan.Zero);
     var gauge = new GaugeControl(() => now);
     var codexFiveHour = new RateLimitWindow(44, now.AddHours(4).AddMinutes(30), 300);
     var codexWeekly = new RateLimitWindow(89, now.AddDays(6).AddHours(2), 10_080);
+    var codexLunaReserve = new RateLimitWindow(72, now.AddDays(1), 10_080);
     var claudeFiveHour = new RateLimitWindow(25, now.AddMinutes(47), 300);
     var claudeWeekly = new RateLimitWindow(60, now.AddDays(3).AddHours(4), 10_080);
 
-    gauge.Update(codexFiveHour, codexWeekly, claudeFiveHour, claudeWeekly);
+    gauge.Update(codexFiveHour, codexWeekly, codexLunaReserve, claudeFiveHour, claudeWeekly);
     Equal(GaugeQuotaPeriod.FiveHour, gauge.CodexPeriod);
     Equal(GaugeQuotaPeriod.FiveHour, gauge.ClaudePeriod);
     Equal("CODEX", gauge.CodexTitleText);
@@ -1532,6 +1606,19 @@ RunSta("悬浮球左右区域独立切换 5 小时和周额度", () =>
     Equal(GaugeQuotaPeriod.FiveHour, gauge.ClaudePeriod);
     Equal("11%", gauge.CodexPercentText);
     Equal("75%", gauge.ClaudePercentText);
+    Equal("W · 6d 2h", gauge.CodexResetText);
+
+    gauge.ToggleProvider(GaugeProvider.Codex);
+    Equal(GaugeQuotaPeriod.LunaReserve, gauge.CodexPeriod);
+    Equal("28%", gauge.CodexPercentText);
+    Equal("LUNA · 1d 0h", gauge.CodexResetText);
+
+    gauge.ToggleProvider(GaugeProvider.Codex);
+    Equal(GaugeQuotaPeriod.FiveHour, gauge.CodexPeriod);
+    Equal("56%", gauge.CodexPercentText);
+
+    gauge.ToggleProvider(GaugeProvider.Codex);
+    Equal(GaugeQuotaPeriod.Weekly, gauge.CodexPeriod);
     Equal("W · 6d 2h", gauge.CodexResetText);
 
     gauge.ToggleProvider(GaugeProvider.Claude);
@@ -2111,7 +2198,8 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
                 Credits: null,
                 AvailableResetCount: null,
                 PlanType: "plus",
-                FetchedAt: codexFetchedAt),
+                FetchedAt: codexFetchedAt,
+                LunaReserve: new RateLimitWindow(16, codexFetchedAt.AddDays(2), 10_080)),
             TokenUsage: null,
             TokenUsageError: null,
             FetchedAt: codexFetchedAt);
@@ -2124,6 +2212,18 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
         Equal(
             "CODEX实时监控中",
             ((TextBlock)mainWindow.FindName("ConnectionText")).Text);
+        Equal("84%", ((TextBlock)mainWindow.FindName("LunaRemainingText")).Text);
+        Equal("Luna", ((TextBlock)mainWindow.FindName("LunaCaption")).Text);
+        var lunaCaption = (TextBlock)mainWindow.FindName("LunaCaption");
+        var lunaRemaining = (TextBlock)mainWindow.FindName("LunaRemainingText");
+        var lunaHeader = lunaCaption.Parent as Grid
+            ?? throw new Exception("Luna 额度卡缺少标题布局。");
+        lunaCaption.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        lunaRemaining.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        if (lunaCaption.DesiredSize.Width + lunaRemaining.DesiredSize.Width > lunaHeader.ActualWidth)
+        {
+            throw new Exception("Luna 额度卡的标题和百分比发生重叠。");
+        }
 
         mainWindow.ApplyClaudeSnapshot(new ClaudeUsageSnapshot(
             new ClaudeAccountUsage(

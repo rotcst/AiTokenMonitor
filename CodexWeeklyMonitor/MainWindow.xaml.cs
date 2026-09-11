@@ -374,6 +374,7 @@ public partial class MainWindow : Window
                     : Loc.T("status.errWithLocal", GetFriendlyError(_codexError));
             ApplyRateWindow(null, FiveHourRemainingText, FiveHourUsedText, FiveHourProgress, FiveHourResetText, Loc.T("card.waitingCodex"));
             ApplyRateWindow(null, WeeklyRemainingText, WeeklyUsedText, WeeklyProgress, WeeklyResetText, Loc.T("card.waitingCodex"));
+            ApplyRateWindow(null, LunaRemainingText, LunaUsedText, LunaProgress, LunaResetText, Loc.T("card.waitingCodex"));
             BalanceText.Text = "--";
             ResetCreditsText.Text = "--";
             ApplyTokenUsageDisplay(localOnlyUsage, errorStatus, errorStatus);
@@ -402,6 +403,13 @@ public partial class MainWindow : Window
             WeeklyUsedText,
             WeeklyProgress,
             WeeklyResetText,
+            isStale: isStale);
+        ApplyRateWindow(
+            snapshot.RateLimits.LunaReserve,
+            LunaRemainingText,
+            LunaUsedText,
+            LunaProgress,
+            LunaResetText,
             isStale: isStale);
 
         BalanceText.Text = FormatBalance(snapshot.RateLimits.Credits);
@@ -435,6 +443,7 @@ public partial class MainWindow : Window
             {
                 snapshot.RateLimits.FiveHour?.UsedPercent,
                 snapshot.RateLimits.Weekly?.UsedPercent,
+                snapshot.RateLimits.LunaReserve?.UsedPercent,
             }
             .Where(value => value.HasValue)
             .Select(value => value!.Value)
@@ -475,6 +484,13 @@ public partial class MainWindow : Window
             WeeklyProgress,
             WeeklyResetText,
             unavailableText);
+        ApplyRateWindow(
+            null,
+            LunaRemainingText,
+            LunaUsedText,
+            LunaProgress,
+            LunaResetText,
+            Loc.T("card.notProvided"));
 
         ApplyClaudeExtraUsageCard(account?.ExtraUsage, account?.Wallet);
         ApplyClaudeSecondaryCard(account, snapshot);
@@ -816,24 +832,31 @@ public partial class MainWindow : Window
     {
         RateLimitWindow? fiveHour;
         RateLimitWindow? weekly;
+        RateLimitWindow? lunaReserve;
         string unavailableText;
+        string lunaUnavailableText;
         if (_activeProvider == UsageProvider.Codex)
         {
             fiveHour = _currentSnapshot?.RateLimits.FiveHour;
             weekly = _currentSnapshot?.RateLimits.Weekly;
+            lunaReserve = _currentSnapshot?.RateLimits.LunaReserve;
             unavailableText = _currentSnapshot is null ? Loc.T("card.waitingCodex") : Loc.T("card.noWindow");
+            lunaUnavailableText = unavailableText;
         }
         else
         {
             fiveHour = _claudeSnapshot?.FiveHour;
             weekly = _claudeSnapshot?.Weekly;
+            lunaReserve = null;
             unavailableText = _claudeSnapshot?.AccountError is null
                 ? Loc.T("card.waitingClaude")
                 : Loc.T("card.quotaUnavailable");
+            lunaUnavailableText = Loc.T("card.notProvided");
         }
 
         FiveHourResetText.Text = fiveHour is null ? unavailableText : FormatResetTime(fiveHour.ResetsAt);
         WeeklyResetText.Text = weekly is null ? unavailableText : FormatResetTime(weekly.ResetsAt);
+        LunaResetText.Text = lunaReserve is null ? lunaUnavailableText : FormatResetTime(lunaReserve.ResetsAt);
     }
 
     internal static string FormatResetTime(DateTimeOffset? resetsAt)
@@ -1092,12 +1115,13 @@ public partial class MainWindow : Window
 
     internal GaugeWindow? GaugeWindowForTesting => _gaugeWindow;
 
-    /// <summary>Feeds both selectable quota windows to each side of the orb.</summary>
+    /// <summary>Feeds all selectable quota windows to each side of the orb.</summary>
     private void PushGaugeValues()
     {
         _gaugeWindow?.SetWindows(
             _currentSnapshot?.RateLimits.FiveHour,
             _currentSnapshot?.RateLimits.Weekly,
+            _currentSnapshot?.RateLimits.LunaReserve,
             _claudeSnapshot?.FiveHour,
             _claudeSnapshot?.Weekly);
     }
@@ -1408,6 +1432,10 @@ public partial class MainWindow : Window
         UpdateTrayTooltip();
         SetExpandedPanel(_expandedPanel);
         RenderActiveProvider();
+        if (IsGaugeVisible)
+        {
+            PushGaugeValues();
+        }
     }
 
     private void HistoryMenuItem_Click(object sender, RoutedEventArgs e)

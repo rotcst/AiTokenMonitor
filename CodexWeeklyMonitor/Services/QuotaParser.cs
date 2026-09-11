@@ -5,6 +5,7 @@ namespace CodexWeeklyMonitor.Services;
 
 public static class QuotaParser
 {
+    private const string LunaReserveLimitId = "gpt-reserve";
     private const long FiveHourMinutes = 5 * 60;
     private const long FiveHourLowerBoundMinutes = 4 * 60;
     private const long FiveHourUpperBoundMinutes = 6 * 60;
@@ -69,6 +70,7 @@ public static class QuotaParser
             WeeklyLowerBoundMinutes,
             WeeklyUpperBoundMinutes,
             WeekMinutes);
+        var lunaReserve = ReadLunaReserveWindow(FindLunaReserveBucket(result));
 
         if (fiveHour is null && weekly is null)
         {
@@ -100,7 +102,8 @@ public static class QuotaParser
             Credits: credits,
             AvailableResetCount: availableResetCount,
             PlanType: GetOptionalString(snapshot, "planType"),
-            FetchedAt: fetchedAt ?? DateTimeOffset.Now);
+            FetchedAt: fetchedAt ?? DateTimeOffset.Now,
+            LunaReserve: ToRateLimitWindow(lunaReserve));
     }
 
     public static WeeklyQuota ParseSnapshot(
@@ -152,6 +155,64 @@ public static class QuotaParser
         AddWindow(snapshot, "primary", windows);
         AddWindow(snapshot, "secondary", windows);
         return windows;
+    }
+
+    private static WindowCandidate? ReadLunaReserveWindow(JsonElement? bucket)
+    {
+        if (bucket is not { ValueKind: JsonValueKind.Object } value)
+        {
+            return null;
+        }
+
+        var windows = ReadWindows(value);
+        var weekly = SelectWindow(
+            windows,
+            WeeklyLowerBoundMinutes,
+            WeeklyUpperBoundMinutes,
+            WeekMinutes);
+
+        // A few older app-server builds omitted windowDurationMins from additional buckets. The
+        // bucket identity is already explicit, so a lone window is still safe to expose as Luna.
+        return weekly ?? (windows.Count == 1 && windows[0].DurationMinutes is null ? windows[0] : null);
+    }
+
+    private static JsonElement? FindLunaReserveBucket(JsonElement result)
+    {
+        if (!result.TryGetProperty("rateLimitsByLimitId", out var buckets) ||
+            buckets.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var property in buckets.EnumerateObject())
+        {
+            if (property.Value.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            if (IsLunaReserveIdentifier(property.Name) ||
+                IsLunaReserveIdentifier(GetOptionalString(property.Value, "limitId")) ||
+                IsLunaReserveIdentifier(GetOptionalString(property.Value, "limitName")))
+            {
+                return property.Value;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsLunaReserveIdentifier(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var compact = new string(value.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+        return compact.Contains("gptreserve", StringComparison.Ordinal) ||
+               compact.Contains("lunareserve", StringComparison.Ordinal) ||
+               string.Equals(value, LunaReserveLimitId, StringComparison.OrdinalIgnoreCase);
     }
 
     private static WindowCandidate? SelectWindow(

@@ -7,10 +7,11 @@ namespace CodexWeeklyMonitor.Services;
 /// account details from the ChatGPT HTTP endpoints when those endpoints are available.
 /// </summary>
 /// <remarks>
-/// The app-server owns the headline windows because <c>account/rateLimits/read</c> is the supported
-/// Codex contract and also emits live rate-limit notifications. The HTTP path still returns useful
-/// supplementary data (per-model limits, credit estimates, profile statistics) and remains a
-/// fallback when Codex is not installed or cannot start.
+/// The app-server owns the regular headline windows and the optional Luna Reserve bucket because
+/// <c>account/rateLimits/read</c> is the supported Codex contract and also emits live rate-limit
+/// notifications. The HTTP path still returns useful supplementary data (including the reserve
+/// bucket, per-model limits, credit estimates, and profile statistics) and remains a fallback when
+/// Codex is not installed or cannot start.
 /// </remarks>
 public sealed class CodexUsageProvider : IAsyncDisposable
 {
@@ -138,6 +139,7 @@ public sealed class CodexUsageProvider : IAsyncDisposable
             AvailableResetCount = appServerSnapshot.RateLimits.AvailableResetCount ??
                                   apiSnapshot.RateLimits.AvailableResetCount,
             PlanType = appServerSnapshot.RateLimits.PlanType ?? apiSnapshot.RateLimits.PlanType,
+            LunaReserve = appServerSnapshot.RateLimits.LunaReserve ?? apiSnapshot.RateLimits.LunaReserve,
         };
         var detail = apiSnapshot.Detail is { } apiDetail
             ? apiDetail with { Source = "source.appServerWithOfficialDetails" }
@@ -196,7 +198,8 @@ public sealed class CodexUsageProvider : IAsyncDisposable
             "CodexUsageProvider",
             $"snapshot source={source}, fetchedAt={snapshot.FetchedAt:O}, " +
             $"fiveHour=[{FormatWindow(snapshot.RateLimits.FiveHour)}], " +
-            $"weekly=[{FormatWindow(snapshot.RateLimits.Weekly)}]");
+            $"weekly=[{FormatWindow(snapshot.RateLimits.Weekly)}], " +
+            $"lunaReserve=[{FormatWindow(snapshot.RateLimits.LunaReserve)}]");
     }
 
     private static string FormatWindow(RateLimitWindow? window)

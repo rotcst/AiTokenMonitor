@@ -38,6 +38,7 @@ internal static class CodexApiParser
         }
 
         var credits = ParseCredits(root);
+        var lunaReserve = ParseLunaReserve(root);
         var limits = new AccountRateLimits(
             FiveHour: fiveHour,
             Weekly: weekly,
@@ -46,7 +47,8 @@ internal static class CodexApiParser
                 : new CreditBalance(credits.Balance, credits.HasCredits, credits.Unlimited),
             AvailableResetCount: availableResetCount,
             PlanType: TryGetString(root, "plan_type"),
-            FetchedAt: fetchedAt);
+            FetchedAt: fetchedAt,
+            LunaReserve: lunaReserve);
 
         var upsell = TryGetObject(root, "rate_limit_upsell");
         var detail = new CodexAccountDetail(
@@ -99,6 +101,7 @@ internal static class CodexApiParser
         foreach (var entry in additional.EnumerateArray())
         {
             if (entry.ValueKind != JsonValueKind.Object ||
+                IsLunaReserveEntry(entry) ||
                 TryGetObject(entry, "rate_limit") is not { } rateLimit)
             {
                 continue;
@@ -120,6 +123,64 @@ internal static class CodexApiParser
         }
 
         return results;
+    }
+
+    private static RateLimitWindow? ParseLunaReserve(JsonElement root)
+    {
+        if (!root.TryGetProperty("additional_rate_limits", out var additional) ||
+            additional.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var entry in additional.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Object ||
+                !IsLunaReserveEntry(entry) ||
+                TryGetObject(entry, "rate_limit") is not { } rateLimit)
+            {
+                continue;
+            }
+
+            var windows = ReadWindows(rateLimit);
+            if (windows.Count == 0)
+            {
+                continue;
+            }
+
+            var weekly = SelectWindow(windows, WeeklyLowerBoundSeconds, WeeklyUpperBoundSeconds, WeekSeconds);
+            if (weekly is not null)
+            {
+                return weekly;
+            }
+
+            // The bucket name is explicit, so a single duration-less window from older payloads
+            // can still be shown without guessing from a regular Codex window.
+            return windows.Count == 1 && windows[0].DurationMinutes is null ? windows[0] : null;
+        }
+
+        return null;
+    }
+
+    private static bool IsLunaReserveEntry(JsonElement entry)
+    {
+        var limitName = TryGetString(entry, "limit_name");
+        var meteredFeature = TryGetString(entry, "metered_feature");
+        return IsLunaReserveIdentifier(limitName) ||
+               IsLunaReserveIdentifier(meteredFeature) ||
+               string.Equals(meteredFeature, "base_model_inference", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLunaReserveIdentifier(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var compact = new string(value.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+        return compact.Contains("gptreserve", StringComparison.Ordinal) ||
+               compact.Contains("lunareserve", StringComparison.Ordinal);
     }
 
     private static CodexCreditDetail? ParseCredits(JsonElement root)
