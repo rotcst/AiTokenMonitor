@@ -4,8 +4,9 @@ using CodexWeeklyMonitor.Models;
 namespace CodexWeeklyMonitor.Services;
 
 /// <summary>
-/// Flattens a provider snapshot into label/value rows for the detail panel, so every field the
-/// upstream APIs return is visible somewhere in the UI rather than only the two headline windows.
+/// Flattens a provider snapshot into the account and aggregate quota rows used by the detail panel.
+/// Per-model Codex buckets remain available in the parsed snapshot for diagnostics, but are not
+/// rendered as additional quota cards.
 /// </summary>
 public static class UsageDetailBuilder
 {
@@ -40,10 +41,6 @@ public static class UsageDetailBuilder
         AddWindow(quota, Loc.T("card.fiveHour"), snapshot.RateLimits.FiveHour);
         AddWindow(quota, Loc.T("card.weekly"), snapshot.RateLimits.Weekly);
         AddWindow(quota, Loc.T("card.lunaReserve"), snapshot.RateLimits.LunaReserve);
-        foreach (var model in detail?.ModelLimits ?? [])
-        {
-            AddWindow(quota, model.Name, model.Window, model.LimitReached ? Loc.T("val.exhaustedShort") : null);
-        }
 
         Add(quota, Loc.T("lbl.limitTitle"), detail?.LimitTitle);
         Add(quota, Loc.T("lbl.limitDesc"), detail?.LimitDescription);

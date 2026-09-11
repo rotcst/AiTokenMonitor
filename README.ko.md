@@ -27,7 +27,7 @@
   - Codex: 주요 한도 창은 `codex app-server`의 `account/rateLimits/read`를 사용하고, ChatGPT
     백엔드 `wham/usage`, `wham/profiles/me`, `wham/rate-limit-reset-credits`로 세부 정보를 보완합니다.
 - **5시간 · 주간 · Luna 예비 한도** + 정확한 재설정 시각과 남은 시간(Luna는 계정과 API가 제공할 때 표시).
-- **크레딧 잔액 · 사용 크레딧**, 모델별 주간 한도(Opus / Sonnet / GPT-5-Codex …), 지출 한도, 한도 알림.
+- **크레딧 잔액 · 사용 크레딧**, 지출 한도, 한도 알림.
 - **액체 오브 모드**: 메인 창의 우클릭 메뉴에서 작은 오브로 전환합니다. 좌우 수조는 각각 Codex와
   Claude이며 수위는 각 서비스의 **남은 한도**입니다(가득 차면 100%, 바닥이면 0%). Codex 왼쪽을 클릭하면
   5시간·주간·Luna 예비 한도를 순환하고, Claude 오른쪽은 5시간·주간을 전환합니다. 서비스 제목은 백분율

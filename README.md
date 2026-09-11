@@ -28,8 +28,7 @@ system tray after opening the main window. Launching it again restores the exist
   - Codex: `codex app-server` method `account/rateLimits/read` for headline windows, enriched by
     ChatGPT backend `wham/usage`, `wham/profiles/me`, and `wham/rate-limit-reset-credits`.
 - **5-hour, weekly, and Luna Reserve windows** with exact reset times and countdowns (Luna appears when the account and API expose it).
-- **Credit balance & usage credits**, per-model weekly buckets (Opus / Sonnet / GPT-5-Codex, …),
-  spend caps, and the plan's limit notices.
+- **Credit balance & usage credits**, spend caps, and the plan's limit notices.
 - **Liquid orb mode**: open the small floating orb from the main window's context menu. Its two tanks
   show Codex on the left and Claude on the right, with water level equal to *remaining* quota (full
   is 100%, dry is 0%). Click the Codex side to cycle through its 5-hour, weekly, and Luna Reserve

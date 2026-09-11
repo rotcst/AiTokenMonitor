@@ -25,7 +25,7 @@
   - Codex：头部额度采用 `codex app-server` 的 `account/rateLimits/read`，并用 ChatGPT 后端
     `wham/usage`、`wham/profiles/me`、`wham/rate-limit-reset-credits` 补充详情。
 - **5 小时、周额度与 Luna 储备额度**，含精确重置时间和倒计时（Luna 仅在账号和接口提供时显示）。
-- **充值余额、用量额度**、分模型周额度（Opus / Sonnet / GPT-5-Codex …）、支出上限、限额提示文案。
+- **充值余额、用量额度**、支出上限、限额提示文案。
 - **液面悬浮球**：从主窗口右键菜单切换到小悬浮球，左右两个水舱分别是 Codex 与 Claude，水位＝各自的
   **剩余额度**（满舱 100%、见底 0%）。单击左侧会循环切换 Codex 的 5 小时、周、Luna 储备额度；右侧仍切换
   Claude 的 5 小时/周额度。服务标题位于百分比上方，当前窗口和重置倒计时位于下方。通过悬浮球右键菜单可恢复主窗口。

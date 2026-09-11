@@ -760,6 +760,46 @@ Run("Codex 旧快照会在详情中显示刷新错误", () =>
     Equal("refresh failed", status.Value);
 });
 
+Run("Codex 详情不显示分模型额度", () =>
+{
+    var fetchedAt = new DateTimeOffset(2026, 7, 30, 12, 0, 0, TimeSpan.Zero);
+    var model = new CodexModelLimit(
+        "GPT-5.3-Codex-Spark",
+        new RateLimitWindow(12, fetchedAt.AddDays(5), 10_080),
+        LimitReached: false);
+    var detail = new CodexAccountDetail(
+        Email: null,
+        PlanType: "pro",
+        RateLimitAllowed: true,
+        LimitReached: false,
+        LimitTitle: null,
+        LimitDescription: null,
+        ModelLimits: [model],
+        Credits: null,
+        Profile: null,
+        SpendLimitReached: null,
+        Source: "source.official");
+    var snapshot = new CodexUsageSnapshot(
+        new AccountRateLimits(
+            FiveHour: null,
+            Weekly: new RateLimitWindow(19, fetchedAt.AddDays(7), 10_080),
+            Credits: null,
+            AvailableResetCount: null,
+            PlanType: "pro",
+            FetchedAt: fetchedAt),
+        TokenUsage: null,
+        TokenUsageError: null,
+        FetchedAt: fetchedAt,
+        Detail: detail);
+
+    var quota = UsageDetailBuilder.BuildCodex(snapshot, null)
+        .Single(section => section.Title == Loc.T("sec.quota"));
+    if (quota.Items.Any(item => item.Label == model.Name))
+    {
+        throw new Exception("Codex 详情仍显示了不需要的分模型额度。");
+    }
+});
+
 Run("CLAUDE_CONFIG_DIR 指向的目录同时用于凭据和会话记录", () =>
 {
     var root = Path.Combine(Path.GetTempPath(), "AiTokenMonitorTests", Guid.NewGuid().ToString("N"));
@@ -1579,6 +1619,8 @@ Run("重置时间显示本地月日和时分", () =>
     var localDate = new DateTime(2026, 7, 29, 14, 30, 0, DateTimeKind.Unspecified);
     var resetAt = new DateTimeOffset(localDate, TimeZoneInfo.Local.GetUtcOffset(localDate));
     Equal("7月29日 14:30 重置", MainWindow.FormatResetTime(resetAt));
+    Equal("7/29 14:30", MainWindow.FormatResetCardTime(resetAt));
+    Equal("--", MainWindow.FormatResetCardTime(null));
 });
 
 RunSta("悬浮球 Codex 循环切换 5 小时、周和 Luna 储备额度", () =>
@@ -1644,6 +1686,13 @@ RunSta("悬浮球 Codex 循环切换 5 小时、周和 Luna 储备额度", () =>
     var codexTitle = texts.Single(text => text.Text == "CODEX");
     var codexPercent = texts.Single(text => text.Text == "11%");
     var codexReset = texts.Single(text => text.Text == "W · 6d 1h");
+    var codexResetOrigin = codexReset.TranslatePoint(new System.Windows.Point(0, 0), gauge);
+    if (codexReset.ActualWidth > GaugeControl.Diameter / 2 - 8 + 0.1 ||
+        codexResetOrigin.X < 4 - 0.1 ||
+        codexResetOrigin.X + codexReset.ActualWidth > GaugeControl.Diameter / 2 - 4 + 0.1)
+    {
+        throw new Exception("悬浮球重置标签没有留出圆形边缘安全间距。");
+    }
     if (codexTitle.Margin.Top >= codexPercent.Margin.Top ||
         codexReset.Margin.Top <= codexPercent.Margin.Top)
     {
@@ -1662,6 +1711,26 @@ RunSta("悬浮球 Codex 循环切换 5 小时、周和 Luna 储备额度", () =>
             new System.Windows.Point(
                 100 + SystemParameters.MinimumHorizontalDragDistance,
                 100)));
+
+});
+
+RunSta("悬浮球按实际窗口跳过缺失的 5 小时额度", () =>
+{
+    var now = new DateTimeOffset(2026, 7, 30, 12, 0, 0, TimeSpan.Zero);
+    var weekly = new RateLimitWindow(10, now.AddDays(6), 10_080);
+    var luna = new RateLimitWindow(20, now.AddDays(2), 10_080);
+    var gauge = new GaugeControl(() => now);
+
+    // Pro-style responses can omit the 300-minute bucket. The available windows alone determine
+    // the cycle; plan names must never force a fabricated 5-hour value into the orb.
+    gauge.Update(null, weekly, luna, null, null);
+    Equal(GaugeQuotaPeriod.Weekly, gauge.CodexPeriod);
+    Equal("90%", gauge.CodexPercentText);
+    gauge.ToggleProvider(GaugeProvider.Codex);
+    Equal(GaugeQuotaPeriod.LunaReserve, gauge.CodexPeriod);
+    Equal("80%", gauge.CodexPercentText);
+    gauge.ToggleProvider(GaugeProvider.Codex);
+    Equal(GaugeQuotaPeriod.Weekly, gauge.CodexPeriod);
 });
 
 Run("Codex 旧额度在卡片提示和托盘中带陈旧标记", () =>
@@ -2218,11 +2287,41 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
         var lunaRemaining = (TextBlock)mainWindow.FindName("LunaRemainingText");
         var lunaHeader = lunaCaption.Parent as Grid
             ?? throw new Exception("Luna 额度卡缺少标题布局。");
+        var fiveUsedText = (TextBlock)mainWindow.FindName("FiveHourUsedText");
+        var fiveResetText = (TextBlock)mainWindow.FindName("FiveHourResetText");
+        var weeklyUsedText = (TextBlock)mainWindow.FindName("WeeklyUsedText");
+        var weeklyResetText = (TextBlock)mainWindow.FindName("WeeklyResetText");
+        var lunaUsedText = (TextBlock)mainWindow.FindName("LunaUsedText");
+        var lunaResetText = (TextBlock)mainWindow.FindName("LunaResetText");
+        mainWindow.UpdateLayout();
         lunaCaption.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
         lunaRemaining.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
         if (lunaCaption.DesiredSize.Width + lunaRemaining.DesiredSize.Width > lunaHeader.ActualWidth)
         {
             throw new Exception("Luna 额度卡的标题和百分比发生重叠。");
+        }
+
+        Equal(MainWindow.FormatResetCardTime(codexFetchedAt.AddHours(2)), fiveResetText.Text);
+        Equal(MainWindow.FormatResetCardTime(codexFetchedAt.AddDays(4)), weeklyResetText.Text);
+        Equal(MainWindow.FormatResetCardTime(codexFetchedAt.AddDays(2)), lunaResetText.Text);
+        foreach (var (usedText, resetText) in new[]
+                 {
+                     (fiveUsedText, fiveResetText),
+                     (weeklyUsedText, weeklyResetText),
+                     (lunaUsedText, lunaResetText),
+                 })
+        {
+            var footer = usedText.Parent as Grid
+                ?? throw new Exception("额度卡底部缺少双列布局。");
+            var usedRight = usedText.TranslatePoint(new System.Windows.Point(usedText.ActualWidth, 0), footer).X;
+            var resetLeft = resetText.TranslatePoint(new System.Windows.Point(0, 0), footer).X;
+            var resetRight = resetLeft + resetText.ActualWidth;
+            if (usedRight > resetLeft + 0.1 || resetRight > footer.ActualWidth + 0.1)
+            {
+                throw new Exception("额度卡底部的已用文字和重置文字发生重叠或越界。");
+            }
+
+            Equal(TextTrimming.CharacterEllipsis, resetText.TextTrimming);
         }
 
         mainWindow.ApplyClaudeSnapshot(new ClaudeUsageSnapshot(
@@ -2263,6 +2362,11 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             FetchedAt: DateTimeOffset.Now));
         claudeTab.IsChecked = true;
         mainWindow.UpdateLayout();
+        var lunaQuotaCard = mainWindow.FindName("LunaQuotaCard") as Border
+            ?? throw new Exception("未找到 Luna 额度卡容器。");
+        Equal(Visibility.Collapsed, lunaQuotaCard.Visibility);
+        Equal(0d, ((ColumnDefinition)mainWindow.FindName("LunaColumn")!).Width.Value);
+        Equal(0d, ((ColumnDefinition)mainWindow.FindName("LunaGapColumn")!).Width.Value);
         Equal(
             "CLAUDE实时监控中",
             ((TextBlock)mainWindow.FindName("ConnectionText")).Text);
@@ -2371,6 +2475,12 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
         Equal(collapsedHeight, mainWindow.Height);
 
         codexTab.IsChecked = true;
+        mainWindow.UpdateLayout();
+        Equal(Visibility.Visible, lunaQuotaCard.Visibility);
+        if (((ColumnDefinition)mainWindow.FindName("LunaColumn")!).Width.Value <= 0)
+        {
+            throw new Exception("切回 Codex 后 Luna 额度列没有恢复。");
+        }
         var historyItems = mainWindow.FindName("HistoryItemsControl") as ItemsControl
             ?? throw new Exception("未找到主窗口逐日柱状图。");
         historyItems.ItemsSource = new[]

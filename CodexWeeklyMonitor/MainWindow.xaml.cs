@@ -356,8 +356,20 @@ public partial class MainWindow : Window
         RenderExpandedPanel();
     }
 
+    private void SetLunaQuotaVisibility(bool show)
+    {
+        LunaQuotaCard.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        LunaGapColumn.Width = show
+            ? new GridLength(10)
+            : new GridLength(0);
+        LunaColumn.Width = show
+            ? new GridLength(1, GridUnitType.Star)
+            : new GridLength(0);
+    }
+
     private void RenderCodex()
     {
+        SetLunaQuotaVisibility(show: true);
         BalanceCaption.Text = Loc.T("card.balance");
         ResetCreditsCaption.Text = Loc.T("card.resetCredits");
         LifetimeTokensCaption.Text = Loc.T("card.lifetimeTokens");
@@ -372,9 +384,9 @@ public partial class MainWindow : Window
                 : localOnlyUsage is null
                     ? GetFriendlyError(_codexError)
                     : Loc.T("status.errWithLocal", GetFriendlyError(_codexError));
-            ApplyRateWindow(null, FiveHourRemainingText, FiveHourUsedText, FiveHourProgress, FiveHourResetText, Loc.T("card.waitingCodex"));
-            ApplyRateWindow(null, WeeklyRemainingText, WeeklyUsedText, WeeklyProgress, WeeklyResetText, Loc.T("card.waitingCodex"));
-            ApplyRateWindow(null, LunaRemainingText, LunaUsedText, LunaProgress, LunaResetText, Loc.T("card.waitingCodex"));
+            ApplyRateWindow(null, FiveHourRemainingText, FiveHourUsedText, FiveHourProgress, FiveHourResetText);
+            ApplyRateWindow(null, WeeklyRemainingText, WeeklyUsedText, WeeklyProgress, WeeklyResetText);
+            ApplyRateWindow(null, LunaRemainingText, LunaUsedText, LunaProgress, LunaResetText);
             BalanceText.Text = "--";
             ResetCreditsText.Text = "--";
             ApplyTokenUsageDisplay(localOnlyUsage, errorStatus, errorStatus);
@@ -461,37 +473,25 @@ public partial class MainWindow : Window
 
     private void RenderClaude()
     {
+        SetLunaQuotaVisibility(show: false);
         LifetimeTokensCaption.Text = Loc.T("card.localLifetimeTokens");
 
         var snapshot = _claudeSnapshot;
         var account = snapshot?.Account;
         var status = snapshot?.Status;
-        var unavailableText = snapshot?.AccountError is null
-            ? Loc.T("card.waitingClaude")
-            : Loc.T("card.quotaUnavailable");
 
         ApplyRateWindow(
             account?.FiveHour,
             FiveHourRemainingText,
             FiveHourUsedText,
             FiveHourProgress,
-            FiveHourResetText,
-            unavailableText);
+            FiveHourResetText);
         ApplyRateWindow(
             account?.Weekly,
             WeeklyRemainingText,
             WeeklyUsedText,
             WeeklyProgress,
-            WeeklyResetText,
-            unavailableText);
-        ApplyRateWindow(
-            null,
-            LunaRemainingText,
-            LunaUsedText,
-            LunaProgress,
-            LunaResetText,
-            Loc.T("card.notProvided"));
-
+            WeeklyResetText);
         ApplyClaudeExtraUsageCard(account?.ExtraUsage, account?.Wallet);
         ApplyClaudeSecondaryCard(account, snapshot);
 
@@ -654,7 +654,6 @@ public partial class MainWindow : Window
         TextBlock usedText,
         ProgressBar progress,
         TextBlock resetText,
-        string? unavailableText = null,
         bool isStale = false)
     {
         var opacity = isStale ? 0.55 : 1d;
@@ -669,7 +668,7 @@ public partial class MainWindow : Window
             usedText.Text = Loc.T("card.notProvided");
             progress.Value = 0;
             progress.Foreground = UnavailableBrush;
-            resetText.Text = unavailableText ?? Loc.T("card.noWindow");
+            resetText.Text = Loc.T("card.notProvided");
             return;
         }
 
@@ -679,7 +678,7 @@ public partial class MainWindow : Window
         usedText.Text = Loc.T(isStale ? "card.usedApprox" : "card.used", window.UsedPercent);
         progress.Value = window.UsedPercent;
         progress.Foreground = GetUsageBrush(window.UsedPercent);
-        resetText.Text = FormatResetTime(window.ResetsAt);
+        resetText.Text = FormatResetCardTime(window.ResetsAt);
     }
 
     private void ApplyTokenUsageDisplay(
@@ -833,30 +832,36 @@ public partial class MainWindow : Window
         RateLimitWindow? fiveHour;
         RateLimitWindow? weekly;
         RateLimitWindow? lunaReserve;
-        string unavailableText;
-        string lunaUnavailableText;
         if (_activeProvider == UsageProvider.Codex)
         {
             fiveHour = _currentSnapshot?.RateLimits.FiveHour;
             weekly = _currentSnapshot?.RateLimits.Weekly;
             lunaReserve = _currentSnapshot?.RateLimits.LunaReserve;
-            unavailableText = _currentSnapshot is null ? Loc.T("card.waitingCodex") : Loc.T("card.noWindow");
-            lunaUnavailableText = unavailableText;
         }
         else
         {
             fiveHour = _claudeSnapshot?.FiveHour;
             weekly = _claudeSnapshot?.Weekly;
             lunaReserve = null;
-            unavailableText = _claudeSnapshot?.AccountError is null
-                ? Loc.T("card.waitingClaude")
-                : Loc.T("card.quotaUnavailable");
-            lunaUnavailableText = Loc.T("card.notProvided");
         }
 
-        FiveHourResetText.Text = fiveHour is null ? unavailableText : FormatResetTime(fiveHour.ResetsAt);
-        WeeklyResetText.Text = weekly is null ? unavailableText : FormatResetTime(weekly.ResetsAt);
-        LunaResetText.Text = lunaReserve is null ? lunaUnavailableText : FormatResetTime(lunaReserve.ResetsAt);
+        SetCompactResetLabel(FiveHourResetText, fiveHour);
+        SetCompactResetLabel(WeeklyResetText, weekly);
+        SetCompactResetLabel(LunaResetText, lunaReserve);
+    }
+
+    private static void SetCompactResetLabel(
+        TextBlock target,
+        RateLimitWindow? window)
+    {
+        target.Text = window is null ? Loc.T("card.notProvided") : FormatResetCardTime(window.ResetsAt);
+    }
+
+    internal static string FormatResetCardTime(DateTimeOffset? resetsAt)
+    {
+        return resetsAt is null
+            ? "--"
+            : resetsAt.Value.ToLocalTime().ToString("M/d HH:mm", CultureInfo.InvariantCulture);
     }
 
     internal static string FormatResetTime(DateTimeOffset? resetsAt)

@@ -416,9 +416,11 @@ public sealed class GaugeControl : UserControl
             _reset = new TextBlock
             {
                 Text = "5H · --",
-                Width = Width - 4,
+                // The reset row sits near the lower circular edge. Keep a small horizontal inset so
+                // a long Luna label cannot be clipped by the ellipse while the text remains readable.
+                Width = Width - 8,
                 FontFamily = MonoFont,
-                FontSize = 7,
+                FontSize = 6.5,
                 FontWeight = FontWeights.SemiBold,
                 TextAlignment = TextAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,

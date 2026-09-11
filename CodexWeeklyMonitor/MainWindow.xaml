@@ -376,8 +376,8 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="10" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="10" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition x:Name="LunaGapColumn" Width="10" />
+                        <ColumnDefinition x:Name="LunaColumn" Width="*" />
                     </Grid.ColumnDefinitions>
 
                     <Border Grid.Column="0"
@@ -413,15 +413,24 @@
                                          Maximum="100"
                                          Value="0"
                                          Style="{StaticResource RoundedProgressStyle}" />
-                            <Grid Grid.Row="4">
+                            <Grid Grid.Row="4" ClipToBounds="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.1*" />
+                                    <ColumnDefinition Width="1.4*" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock x:Name="FiveHourUsedText"
+                                           Grid.Column="0"
                                            Text="已用 --%"
-                                           FontSize="9.5"
+                                           FontSize="9"
+                                           TextTrimming="CharacterEllipsis"
                                            Foreground="{StaticResource SubtleTextBrush}" />
                                 <TextBlock x:Name="FiveHourResetText"
+                                           Grid.Column="1"
                                            Text="{loc:Str card.waitingData}"
                                            HorizontalAlignment="Right"
-                                           FontSize="9.5"
+                                           FontSize="9"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextAlignment="Right"
                                            Foreground="{StaticResource SubtleTextBrush}" />
                             </Grid>
                         </Grid>
@@ -460,21 +469,31 @@
                                          Maximum="100"
                                          Value="0"
                                          Style="{StaticResource RoundedProgressStyle}" />
-                            <Grid Grid.Row="4">
+                            <Grid Grid.Row="4" ClipToBounds="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.1*" />
+                                    <ColumnDefinition Width="1.4*" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock x:Name="WeeklyUsedText"
+                                           Grid.Column="0"
                                            Text="已用 --%"
-                                           FontSize="9.5"
+                                           FontSize="9"
+                                           TextTrimming="CharacterEllipsis"
                                            Foreground="{StaticResource SubtleTextBrush}" />
                                 <TextBlock x:Name="WeeklyResetText"
+                                           Grid.Column="1"
                                            Text="{loc:Str card.waitingData}"
                                            HorizontalAlignment="Right"
-                                           FontSize="9.5"
+                                           FontSize="9"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextAlignment="Right"
                                            Foreground="{StaticResource SubtleTextBrush}" />
                             </Grid>
                         </Grid>
                     </Border>
 
-                    <Border Grid.Column="4"
+                    <Border x:Name="LunaQuotaCard"
+                            Grid.Column="4"
                             Padding="11,9"
                             Background="{StaticResource CardBrush}"
                             BorderBrush="{StaticResource CardBorderBrush}"
@@ -509,15 +528,24 @@
                                          Maximum="100"
                                          Value="0"
                                          Style="{StaticResource RoundedProgressStyle}" />
-                            <Grid Grid.Row="4">
+                            <Grid Grid.Row="4" ClipToBounds="True">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.1*" />
+                                    <ColumnDefinition Width="1.4*" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock x:Name="LunaUsedText"
+                                           Grid.Column="0"
                                            Text="已用 --%"
-                                           FontSize="9.5"
+                                           FontSize="9"
+                                           TextTrimming="CharacterEllipsis"
                                            Foreground="{StaticResource SubtleTextBrush}" />
                                 <TextBlock x:Name="LunaResetText"
+                                           Grid.Column="1"
                                            Text="{loc:Str card.waitingData}"
                                            HorizontalAlignment="Right"
-                                           FontSize="9.5"
+                                           FontSize="9"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextAlignment="Right"
                                            Foreground="{StaticResource SubtleTextBrush}" />
                             </Grid>
                         </Grid>
