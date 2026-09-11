@@ -1704,6 +1704,27 @@ Run("重置时间显示本地月日和时分", () =>
     Equal("--", MainWindow.FormatResetCardTime(null));
 });
 
+Run("额度颜色按剩余比例连续渐变", () =>
+{
+    Equal(QuotaColorScale.EmptyColor, QuotaColorScale.ColorForRemaining(0));
+    Equal(QuotaColorScale.MidColor, QuotaColorScale.ColorForRemaining(50));
+    Equal(QuotaColorScale.FullColor, QuotaColorScale.ColorForRemaining(100));
+
+    var previous = QuotaColorScale.ColorForRemaining(0);
+    for (var remaining = 1; remaining <= 100; remaining++)
+    {
+        var current = QuotaColorScale.ColorForRemaining(remaining);
+        if (Math.Abs(current.R - previous.R) > 3 ||
+            Math.Abs(current.G - previous.G) > 3 ||
+            Math.Abs(current.B - previous.B) > 3)
+        {
+            throw new Exception($"剩余 {remaining}% 的颜色变化过于突兀。");
+        }
+
+        previous = current;
+    }
+});
+
 RunSta("悬浮球 Codex 循环切换 5 小时、周和 Luna 储备额度", () =>
 {
     var now = new DateTimeOffset(2026, 7, 30, 12, 0, 0, TimeSpan.Zero);
@@ -1722,6 +1743,10 @@ RunSta("悬浮球 Codex 循环切换 5 小时、周和 Luna 储备额度", () =>
     Equal("CLAUDE", gauge.ClaudeTitleText);
     Equal("56%", gauge.CodexPercentText);
     Equal("75%", gauge.ClaudePercentText);
+    Equal(QuotaColorScale.ColorForRemaining(56), gauge.CodexPercentColor);
+    Equal(QuotaColorScale.ColorForRemaining(75), gauge.ClaudePercentColor);
+    Equal(QuotaColorScale.ColorForRemaining(56), gauge.CodexLiquidColor);
+    Equal(QuotaColorScale.ColorForRemaining(75), gauge.ClaudeLiquidColor);
     Equal("H · 4h 30m", gauge.CodexResetText);
     Equal("H · 47m", gauge.ClaudeResetText);
 
@@ -1730,6 +1755,8 @@ RunSta("悬浮球 Codex 循环切换 5 小时、周和 Luna 储备额度", () =>
     Equal(GaugeQuotaPeriod.FiveHour, gauge.ClaudePeriod);
     Equal("11%", gauge.CodexPercentText);
     Equal("75%", gauge.ClaudePercentText);
+    Equal(QuotaColorScale.ColorForRemaining(11), gauge.CodexPercentColor);
+    Equal(QuotaColorScale.ColorForRemaining(11), gauge.CodexLiquidColor);
     Equal("W · 6d 2h", gauge.CodexResetText);
 
     gauge.ToggleProvider(GaugeProvider.Codex);
@@ -2474,6 +2501,15 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             Equal((double)expectedRemaining, fiveHourProgress.Value);
             Equal((double)expectedRemaining, weeklyProgress.Value);
             Equal((double)expectedRemaining, lunaProgress.Value);
+            Equal(
+                QuotaColorScale.ColorForRemaining(expectedRemaining),
+                ((SolidColorBrush)fiveHourProgress.Foreground).Color);
+            Equal(
+                QuotaColorScale.ColorForRemaining(expectedRemaining),
+                ((SolidColorBrush)weeklyProgress.Foreground).Color);
+            Equal(
+                QuotaColorScale.ColorForRemaining(expectedRemaining),
+                ((SolidColorBrush)lunaProgress.Foreground).Color);
         }
 
         applyCodexSnapshot.Invoke(mainWindow, [codexSnapshot]);

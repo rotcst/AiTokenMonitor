@@ -24,9 +24,8 @@ public partial class MainWindow : Window
     private const double CollapsedHeight = 432;
     private const double ExpandPanelHeight = 236;
 
-    private static readonly Brush HealthyBrush = CreateBrush(0x7E, 0xE7, 0x87);
-    private static readonly Brush WarningBrush = CreateBrush(0xF0, 0xB9, 0x5C);
-    private static readonly Brush DangerBrush = CreateBrush(0xFF, 0x6B, 0x6B);
+    private static readonly Brush WarningBrush = QuotaColorScale.BrushForRemaining(50);
+    private static readonly Brush DangerBrush = QuotaColorScale.BrushForRemaining(0);
     private static readonly Brush UnavailableBrush = CreateBrush(0x5B, 0x66, 0x72);
 
     /// <summary>How often a long-running instance re-checks GitHub for a newer release.</summary>
@@ -503,7 +502,7 @@ public partial class MainWindow : Window
             .Select(value => value!.Value)
             .DefaultIfEmpty(0)
             .Max();
-        StatusDot.Fill = isStale ? DangerBrush : GetUsageBrush(observedUsage);
+        StatusDot.Fill = isStale ? DangerBrush : GetQuotaBrush(100 - observedUsage);
         ConnectionText.Text = isStale
             ? Loc.T("conn.stale")
             : Loc.T("conn.codexLive");
@@ -574,7 +573,7 @@ public partial class MainWindow : Window
                 .Select(value => value!.Value)
                 .DefaultIfEmpty(0)
                 .Max();
-            StatusDot.Fill = snapshot?.AccountError is null ? GetUsageBrush(observedUsage) : WarningBrush;
+            StatusDot.Fill = snapshot?.AccountError is null ? GetQuotaBrush(100 - observedUsage) : WarningBrush;
             ConnectionText.Text = snapshot?.AccountError is null
                 ? Loc.T("conn.claudeLive")
                 : Loc.T("conn.claudeUpdateFailed");
@@ -773,7 +772,7 @@ public partial class MainWindow : Window
         // empty when the window is exhausted. Keep the color tied to usage so warnings still
         // become more prominent as the account approaches its limit.
         progress.Value = window.RemainingPercent;
-        progress.Foreground = GetUsageBrush(window.UsedPercent);
+        progress.Foreground = GetQuotaBrush(window.RemainingPercent);
         resetText.Text = FormatResetCardTime(window.ResetsAt);
     }
 
@@ -987,15 +986,8 @@ public partial class MainWindow : Window
             : credits.Balance;
     }
 
-    private static Brush GetUsageBrush(int usedPercent)
-    {
-        return usedPercent switch
-        {
-            >= 85 => DangerBrush,
-            >= 65 => WarningBrush,
-            _ => HealthyBrush,
-        };
-    }
+    private static Brush GetQuotaBrush(int remainingPercent) =>
+        QuotaColorScale.BrushForRemaining(remainingPercent);
 
     private static string GetFriendlyError(Exception exception)
     {

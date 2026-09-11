@@ -5,7 +5,9 @@ using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using CodexWeeklyMonitor.Models;
+using CodexWeeklyMonitor.Services;
 using Color = System.Windows.Media.Color;
+using Brush = System.Windows.Media.Brush;
 using FontFamily = System.Windows.Media.FontFamily;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using LinearGradientBrush = System.Windows.Media.LinearGradientBrush;
@@ -184,6 +186,14 @@ public sealed class GaugeControl : UserControl
     internal string CodexPercentText => _codex.PercentText;
 
     internal string ClaudePercentText => _claude.PercentText;
+
+    internal Color CodexPercentColor => _codex.PercentColor;
+
+    internal Color ClaudePercentColor => _claude.PercentColor;
+
+    internal Color CodexLiquidColor => _codex.LiquidColor;
+
+    internal Color ClaudeLiquidColor => _claude.LiquidColor;
 
     internal string CodexResetText => _codex.ResetText;
 
@@ -438,14 +448,18 @@ public sealed class GaugeControl : UserControl
         private static readonly FontFamily MonoFont = new("Cascadia Mono, Consolas, monospace");
 
         private readonly List<TranslateTransform> _levelTransforms = [];
+        private readonly List<SolidColorBrush> _liquidBrushes = [];
+        private readonly Color _baseColor;
         private readonly TextBlock _title;
         private readonly TextBlock _readout;
         private readonly TextBlock _reset;
+        private readonly Brush _defaultReadoutBrush;
         private DateTimeOffset? _resetsAt;
         private GaugeQuotaPeriod _period;
 
         public Chamber(Color color, string name, bool isLeft)
         {
+            _baseColor = color;
             Root = new Grid
             {
                 Width = Width,
@@ -477,6 +491,9 @@ public sealed class GaugeControl : UserControl
                 IsHitTestVisible = false,
                 Foreground = new SolidColorBrush(Color.FromArgb(0xB4, color.R, color.G, color.B)),
             };
+            var defaultReadoutBrush = new SolidColorBrush(Lighten(color));
+            defaultReadoutBrush.Freeze();
+            _defaultReadoutBrush = defaultReadoutBrush;
             _readout = new TextBlock
             {
                 Text = "--",
@@ -487,7 +504,7 @@ public sealed class GaugeControl : UserControl
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 0, 0),
                 IsHitTestVisible = false,
-                Foreground = new SolidColorBrush(Lighten(color)),
+                Foreground = _defaultReadoutBrush,
                 Effect = new System.Windows.Media.Effects.DropShadowEffect
                 {
                     BlurRadius = 4,
@@ -531,6 +548,14 @@ public sealed class GaugeControl : UserControl
 
         public string PercentText => _readout.Text;
 
+        public Color PercentColor => _readout.Foreground is SolidColorBrush brush
+            ? brush.Color
+            : Colors.Transparent;
+
+        public Color LiquidColor => _liquidBrushes.Count == 0
+            ? Colors.Transparent
+            : Color.FromRgb(_liquidBrushes[0].Color.R, _liquidBrushes[0].Color.G, _liquidBrushes[0].Color.B);
+
         public string ResetText => _reset.Text;
 
         /// <summary>Switches the displayed window, then slides the water line to its remaining quota.</summary>
@@ -553,6 +578,17 @@ public sealed class GaugeControl : UserControl
         private void SetLevel(int? remaining)
         {
             _readout.Text = FormatPercent(remaining);
+            if (remaining is { } remainingValue)
+            {
+                var quotaColor = QuotaColorScale.ColorForRemaining(remainingValue);
+                _readout.Foreground = QuotaColorScale.BrushForRemaining(remainingValue);
+                SetLiquidColor(quotaColor);
+            }
+            else
+            {
+                _readout.Foreground = _defaultReadoutBrush;
+                SetLiquidColor(_baseColor);
+            }
 
             // Water line measured from the top: full quota → line at the top (y = 0); empty → bottom.
             var fraction = remaining is { } value ? Math.Clamp(value, 0, 100) / 100.0 : 0;
@@ -565,6 +601,14 @@ public sealed class GaugeControl : UserControl
             foreach (var transform in _levelTransforms)
             {
                 transform.BeginAnimation(TranslateTransform.YProperty, slide);
+            }
+        }
+
+        private void SetLiquidColor(Color color)
+        {
+            foreach (var brush in _liquidBrushes)
+            {
+                brush.Color = Color.FromArgb(brush.Color.A, color.R, color.G, color.B);
             }
         }
 
@@ -590,9 +634,11 @@ public sealed class GaugeControl : UserControl
             _levelTransforms.Add(levelTransform);
             var scrollTransform = new TranslateTransform(0, 0);
 
+            var fill = new SolidColorBrush(Color.FromArgb(alpha, color.R, color.G, color.B));
+            _liquidBrushes.Add(fill);
             var path = new Path
             {
-                Fill = new SolidColorBrush(Color.FromArgb(alpha, color.R, color.G, color.B)),
+                Fill = fill,
                 IsHitTestVisible = false,
                 Data = new PathGeometry([figure]),
                 RenderTransform = new TransformGroup { Children = { scrollTransform, levelTransform } },
