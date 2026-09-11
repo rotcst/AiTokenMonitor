@@ -356,20 +356,58 @@ public partial class MainWindow : Window
         RenderExpandedPanel();
     }
 
-    private void SetLunaQuotaVisibility(bool show)
+    private void SetQuotaVisibility(bool showFiveHour, bool showWeekly, bool showLuna)
     {
-        LunaQuotaCard.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        LunaGapColumn.Width = show
-            ? new GridLength(10)
-            : new GridLength(0);
-        LunaColumn.Width = show
+        FiveHourQuotaCard.Visibility = showFiveHour ? Visibility.Visible : Visibility.Collapsed;
+        WeeklyQuotaCard.Visibility = showWeekly ? Visibility.Visible : Visibility.Collapsed;
+        LunaQuotaCard.Visibility = showLuna ? Visibility.Visible : Visibility.Collapsed;
+
+        FiveHourColumn.Width = showFiveHour
             ? new GridLength(1, GridUnitType.Star)
             : new GridLength(0);
+        WeeklyColumn.Width = showWeekly
+            ? new GridLength(1, GridUnitType.Star)
+            : new GridLength(0);
+        LunaColumn.Width = showLuna
+            ? new GridLength(1, GridUnitType.Star)
+            : new GridLength(0);
+
+        // Keep a separator only when it sits between two visible cards. If Weekly is absent but
+        // Luna is present, the first gap naturally separates the remaining Five-hour and Luna cards.
+        FiveHourGapColumn.Width = showFiveHour && (showWeekly || showLuna)
+            ? new GridLength(10)
+            : new GridLength(0);
+        LunaGapColumn.Width = showWeekly && showLuna
+            ? new GridLength(10)
+            : new GridLength(0);
+    }
+
+    private void SetCodexQuotaVisibility(AccountRateLimits? limits)
+    {
+        // Until the first snapshot arrives the account's available windows are unknown, so keep
+        // loading placeholders. Once a snapshot is present, only buckets actually returned by
+        // the account/API occupy space; a Pro response with no 5-hour bucket does not leave a
+        // misleading "—" card behind.
+        var showLoadingPlaceholders = limits is null;
+        SetQuotaVisibility(
+            showLoadingPlaceholders || limits?.FiveHour is not null,
+            showLoadingPlaceholders || limits?.Weekly is not null,
+            showLoadingPlaceholders || limits?.LunaReserve is not null);
+    }
+
+    private void SetClaudeQuotaVisibility(ClaudeAccountUsage? account)
+    {
+        // Claude has no Luna bucket. Keep 5-hour/weekly placeholders while the account is still
+        // loading, then follow the two windows returned by the official usage response.
+        var showLoadingPlaceholders = account is null;
+        SetQuotaVisibility(
+            showLoadingPlaceholders || account?.FiveHour is not null,
+            showLoadingPlaceholders || account?.Weekly is not null,
+            showLuna: false);
     }
 
     private void RenderCodex()
     {
-        SetLunaQuotaVisibility(show: true);
         BalanceCaption.Text = Loc.T("card.balance");
         ResetCreditsCaption.Text = Loc.T("card.resetCredits");
         LifetimeTokensCaption.Text = Loc.T("card.lifetimeTokens");
@@ -378,6 +416,7 @@ public partial class MainWindow : Window
 
         if (_currentSnapshot is not { } snapshot)
         {
+            SetCodexQuotaVisibility(null);
             var localOnlyUsage = CreateLocalOnlyUsage(_todayTokenUsage);
             var errorStatus = _codexError is null
                 ? Loc.T("status.readingCodexToken")
@@ -401,6 +440,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        SetCodexQuotaVisibility(snapshot.RateLimits);
         var isStale = _codexError is not null;
         ApplyRateWindow(
             snapshot.RateLimits.FiveHour,
@@ -473,12 +513,12 @@ public partial class MainWindow : Window
 
     private void RenderClaude()
     {
-        SetLunaQuotaVisibility(show: false);
         LifetimeTokensCaption.Text = Loc.T("card.localLifetimeTokens");
 
         var snapshot = _claudeSnapshot;
         var account = snapshot?.Account;
         var status = snapshot?.Status;
+        SetClaudeQuotaVisibility(account);
 
         ApplyRateWindow(
             account?.FiveHour,

@@ -2283,6 +2283,13 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             ((TextBlock)mainWindow.FindName("ConnectionText")).Text);
         Equal("84%", ((TextBlock)mainWindow.FindName("LunaRemainingText")).Text);
         Equal("Luna", ((TextBlock)mainWindow.FindName("LunaCaption")).Text);
+        var fiveHourQuotaCard = mainWindow.FindName("FiveHourQuotaCard") as Border
+            ?? throw new Exception("未找到 5 小时额度卡容器。");
+        var weeklyQuotaCard = mainWindow.FindName("WeeklyQuotaCard") as Border
+            ?? throw new Exception("未找到周额度卡容器。");
+        var fiveHourColumn = (ColumnDefinition)mainWindow.FindName("FiveHourColumn")!;
+        var fiveHourGapColumn = (ColumnDefinition)mainWindow.FindName("FiveHourGapColumn")!;
+        var weeklyColumn = (ColumnDefinition)mainWindow.FindName("WeeklyColumn")!;
         var lunaCaption = (TextBlock)mainWindow.FindName("LunaCaption");
         var lunaRemaining = (TextBlock)mainWindow.FindName("LunaRemainingText");
         var lunaHeader = lunaCaption.Parent as Grid
@@ -2322,6 +2329,36 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             }
 
             Equal(TextTrimming.CharacterEllipsis, resetText.TextTrimming);
+        }
+
+        // A Pro response can omit the 300-minute bucket. The main panel follows the actual
+        // response just like the orb: hide that card and reclaim its column, while a Plus response
+        // with FiveHour present keeps the card visible.
+        var proCodexSnapshot = codexSnapshot with
+        {
+            RateLimits = codexSnapshot.RateLimits with
+            {
+                FiveHour = null,
+                PlanType = "pro",
+            },
+        };
+        applyCodexSnapshot.Invoke(mainWindow, [proCodexSnapshot]);
+        mainWindow.UpdateLayout();
+        Equal(Visibility.Collapsed, fiveHourQuotaCard.Visibility);
+        Equal(0d, fiveHourColumn.Width.Value);
+        Equal(0d, fiveHourGapColumn.Width.Value);
+        Equal(Visibility.Visible, weeklyQuotaCard.Visibility);
+        if (weeklyColumn.Width.Value <= 0)
+        {
+            throw new Exception("Pro 账号隐藏 5 小时额度后周额度列没有展开。");
+        }
+
+        applyCodexSnapshot.Invoke(mainWindow, [codexSnapshot]);
+        mainWindow.UpdateLayout();
+        Equal(Visibility.Visible, fiveHourQuotaCard.Visibility);
+        if (fiveHourColumn.Width.Value <= 0 || fiveHourGapColumn.Width.Value <= 0)
+        {
+            throw new Exception("Plus 账号返回 5 小时额度后卡片没有恢复。");
         }
 
         mainWindow.ApplyClaudeSnapshot(new ClaudeUsageSnapshot(
