@@ -10,7 +10,8 @@ namespace CodexWeeklyMonitor;
 /// <summary>
 /// The compact "orb" mode: a small circular racing-style gauge showing Codex and Claude usage at a
 /// glance. Clicking the Codex half cycles its 5-hour, weekly, and Luna Reserve windows; clicking
-/// the Claude half switches its 5-hour/weekly window. Dragging moves the orb.
+/// the Claude half cycles every 5-hour, weekly, and Fable point window the account returned. Dragging
+/// moves the orb.
 /// </summary>
 public partial class GaugeWindow : Window
 {
@@ -65,8 +66,24 @@ public partial class GaugeWindow : Window
         RateLimitWindow? codexWeekly,
         RateLimitWindow? codexLunaReserve,
         RateLimitWindow? claudeFiveHour,
+        RateLimitWindow? claudeWeekly,
+        RateLimitWindow? claudeFable) =>
+        _gauge.Update(
+            codexFiveHour,
+            codexWeekly,
+            codexLunaReserve,
+            claudeFiveHour,
+            claudeWeekly,
+            claudeFable);
+
+    /// <summary>Compatibility overload for callers that do not have Claude's Fable bucket.</summary>
+    public void SetWindows(
+        RateLimitWindow? codexFiveHour,
+        RateLimitWindow? codexWeekly,
+        RateLimitWindow? codexLunaReserve,
+        RateLimitWindow? claudeFiveHour,
         RateLimitWindow? claudeWeekly) =>
-        _gauge.Update(codexFiveHour, codexWeekly, codexLunaReserve, claudeFiveHour, claudeWeekly);
+        SetWindows(codexFiveHour, codexWeekly, codexLunaReserve, claudeFiveHour, claudeWeekly, null);
 
     /// <summary>Compatibility overload for callers that only know the original two Codex windows.</summary>
     public void SetWindows(

@@ -1,26 +1,45 @@
 namespace CodexWeeklyMonitor.Models;
 
 /// <summary>
-/// Supplementary data that only the Claude Code status line exposes (model name, context window).
-/// Quota numbers now come from <see cref="ClaudeAccountUsage"/> instead.
+/// Supplementary data that the Claude Code status line can expose (model name, context window, and
+/// optional model-scoped quota fields). The official account response remains authoritative when
+/// both sources provide the same bucket.
 /// </summary>
 public sealed record ClaudeStatusUsage(
     RateLimitWindow? FiveHour,
     RateLimitWindow? Weekly,
     string? ModelName,
     int? ContextUsedPercent,
-    DateTimeOffset ObservedAt);
+    DateTimeOffset ObservedAt,
+    IReadOnlyList<ClaudeScopedLimit>? ScopedLimits = null,
+    ClaudeExtraUsage? ExtraUsage = null);
+
+/// <summary>How a Claude model window is billed.</summary>
+public enum ClaudeLimitBilling
+{
+    Subscription,
+    UsageCredits,
+}
 
 /// <summary>
-/// A model or surface scoped limit reported by /api/oauth/usage (Opus weekly, Sonnet weekly, ...).
+/// A model or surface scoped limit reported by Claude's usage surfaces (Opus, Sonnet, Fable, ...).
 /// </summary>
 public sealed record ClaudeScopedLimit(
     string Key,
     string DisplayName,
     int UsedPercent,
-    DateTimeOffset? ResetsAt)
+    DateTimeOffset? ResetsAt,
+    ClaudeLimitBilling Billing = ClaudeLimitBilling.Subscription,
+    string? ModelName = null)
 {
     public int RemainingPercent => Math.Clamp(100 - UsedPercent, 0, 100);
+
+    public bool UsesUsageCredits => Billing == ClaudeLimitBilling.UsageCredits;
+
+    public bool IsFable =>
+        Key.Equals("seven_day_overage_included", StringComparison.OrdinalIgnoreCase) ||
+        (ModelName?.Contains("fable", StringComparison.OrdinalIgnoreCase) ?? false) ||
+        DisplayName.Contains("fable", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>
@@ -46,7 +65,11 @@ public sealed record ClaudeCreditWallet(
     bool AutoReloadEnabled,
     decimal? AutoReloadThreshold,
     decimal? AutoReloadAmount,
-    bool CanPurchase);
+    bool CanPurchase,
+    decimal? Used = null,
+    decimal? Limit = null,
+    int? UsedPercent = null,
+    bool? IsEnabled = null);
 
 /// <summary>
 /// Authoritative account quota, mirroring what <c>/usage</c> shows inside Claude Code.
@@ -58,7 +81,11 @@ public sealed record ClaudeAccountUsage(
     ClaudeExtraUsage? ExtraUsage,
     string? SubscriptionType,
     DateTimeOffset FetchedAt,
-    ClaudeCreditWallet? Wallet = null);
+    ClaudeCreditWallet? Wallet = null)
+{
+    public ClaudeScopedLimit? FableLimit =>
+        ScopedLimits.FirstOrDefault(limit => limit.IsFable);
+}
 
 public sealed record ClaudeUsageSnapshot(
     ClaudeAccountUsage? Account,
@@ -83,6 +110,53 @@ public sealed record ClaudeUsageSnapshot(
     public RateLimitWindow? FiveHour => Account?.FiveHour;
 
     public RateLimitWindow? Weekly => Account?.Weekly;
+
+    /// <summary>
+    /// Combines the official response with optional status-line data. The official response wins
+    /// for a duplicate model, while a newer status-line schema can still supply a model bucket that
+    /// an older OAuth response omitted.
+    /// </summary>
+    public IReadOnlyList<ClaudeScopedLimit> ScopedLimits
+    {
+        get
+        {
+            var merged = new List<ClaudeScopedLimit>();
+            AddScoped(merged, Account?.ScopedLimits);
+            AddScoped(merged, Status?.ScopedLimits);
+            return merged;
+        }
+    }
+
+    public ClaudeScopedLimit? FableLimit =>
+        ScopedLimits.FirstOrDefault(limit => limit.IsFable);
+
+    public ClaudeExtraUsage? ExtraUsage => Account?.ExtraUsage ?? Status?.ExtraUsage;
+
+    private static void AddScoped(
+        ICollection<ClaudeScopedLimit> destination,
+        IReadOnlyList<ClaudeScopedLimit>? source)
+    {
+        if (source is null)
+        {
+            return;
+        }
+
+        foreach (var limit in source)
+        {
+            var identity = limit.ModelName ?? limit.Key;
+            if (destination.Any(existing =>
+                    (limit.IsFable && existing.IsFable) ||
+                    string.Equals(
+                        existing.ModelName ?? existing.Key,
+                        identity,
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            destination.Add(limit);
+        }
+    }
 }
 
 /// <summary>
@@ -105,7 +179,7 @@ public sealed record ClaudeSessionState(
     public int ContextUsedPercent =>
         (int)Math.Clamp(Math.Round(ContextTokens * 100d / ContextWindow), 0, 100);
 
-    /// <summary>Trims the API id down to what the UI shows ("claude-opus-5" -> "Opus 5").</summary>
+    /// <summary>Trims the API id down to what the UI shows ("claude-fable-5-1" -> "Fable 5.1").</summary>
     public string? DisplayModelName
     {
         get
@@ -126,10 +200,31 @@ public sealed record ClaudeSessionState(
                 .Where(part => !(part.Length == 8 && part.All(char.IsDigit)))
                 .Select(part => part.Length <= 1
                     ? part.ToUpperInvariant()
-                    : char.ToUpperInvariant(part[0]) + part[1..]);
-            return string.Join(' ', parts);
+                    : char.ToUpperInvariant(part[0]) + part[1..])
+                .ToArray();
+
+            var displayParts = new List<string>(parts.Length);
+            for (var index = 0; index < parts.Length; index++)
+            {
+                if (index + 1 < parts.Length &&
+                    IsShortNumeric(parts[index]) &&
+                    IsShortNumeric(parts[index + 1]))
+                {
+                    displayParts.Add($"{parts[index]}.{parts[index + 1]}");
+                    index++;
+                }
+                else
+                {
+                    displayParts.Add(parts[index]);
+                }
+            }
+
+            return string.Join(' ', displayParts);
         }
     }
+
+    private static bool IsShortNumeric(string value) =>
+        value.Length is > 0 and <= 2 && value.All(char.IsDigit);
 }
 
 internal sealed record ClaudeTokenRecord(

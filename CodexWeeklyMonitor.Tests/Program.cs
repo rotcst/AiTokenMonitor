@@ -955,6 +955,7 @@ Run("解析 Claude 官方用量接口的 5 小时、周额度、模型分桶和�
         {
           "five_hour": { "utilization": 17.0, "resets_at": "2026-07-28T00:20:00.733916+00:00" },
           "seven_day": { "utilization": 63.4, "resets_at": "2026-08-02T16:00:00.733941+00:00" },
+          "seven_day_overage_included": { "utilization": 12.0, "resets_at": "2026-08-02T16:00:00+00:00" },
           "seven_day_opus": { "utilization": 41.2, "resets_at": "2026-08-02T16:00:00+00:00" },
           "seven_day_sonnet": null,
           "extra_usage": {
@@ -975,7 +976,18 @@ Run("解析 Claude 官方用量接口的 5 小时、周额度、模型分桶和�
               "percent": 8,
               "resets_at": "2026-08-02T16:00:00+00:00",
               "scope": { "model": { "display_name": "Fable 5" } }
+            },
+            {
+              "kind": "weekly_scoped",
+              "group": "weekly",
+              "percent": 19,
+              "resets_at": "2026-08-02T16:00:00+00:00",
+              "scope": { "model": { "display_name": "Sonnet 4.5" } }
             }
+          ],
+          "model_scoped": [
+            { "display_name": "Fable 5.1", "utilization": 12, "resets_at": "2026-08-02T16:00:00+00:00" },
+            { "display_name": "Sonnet 4.5", "utilization": 19, "resets_at": "2026-08-02T16:00:00+00:00" }
           ]
         }
         """,
@@ -990,11 +1002,15 @@ Run("解析 Claude 官方用量接口的 5 小时、周额度、模型分桶和�
         usage.Weekly.ResetsAt!.Value.ToUniversalTime());
     Equal("pro", usage.SubscriptionType);
 
-    Equal(2, usage.ScopedLimits.Count);
-    Equal("Opus 周额度", usage.ScopedLimits[0].DisplayName);
-    Equal(41, usage.ScopedLimits[0].UsedPercent);
-    Equal("Fable 5 周额度", usage.ScopedLimits[1].DisplayName);
-    Equal(8, usage.ScopedLimits[1].UsedPercent);
+    Equal(3, usage.ScopedLimits.Count);
+    Equal("Fable 5.1 点数额度", usage.ScopedLimits[0].DisplayName);
+    Equal(12, usage.ScopedLimits[0].UsedPercent);
+    Equal(true, usage.ScopedLimits[0].UsesUsageCredits);
+    Equal("Opus 周额度", usage.ScopedLimits[1].DisplayName);
+    Equal(41, usage.ScopedLimits[1].UsedPercent);
+    Equal("Sonnet 4.5 周额度", usage.ScopedLimits[2].DisplayName);
+    Equal(19, usage.ScopedLimits[2].UsedPercent);
+    Equal(false, usage.ScopedLimits[2].UsesUsageCredits);
 
     Equal(true, usage.ExtraUsage!.IsEnabled);
     Equal<decimal?>(4.5m, usage.ExtraUsage.UsedAmount);
@@ -1028,7 +1044,44 @@ Run("解析 Claude 预付点数余额与自动充值", () =>
     Equal<decimal?>(10m, usage.Wallet.AutoReloadThreshold);
     Equal<decimal?>(50m, usage.Wallet.AutoReloadAmount);
     Equal(true, usage.Wallet.CanPurchase);
+    Equal<decimal?>(4.5m, usage.Wallet.Used);
+    Equal<decimal?>(50m, usage.Wallet.Limit);
     Equal<decimal?>(4.5m, usage.ExtraUsage!.UsedAmount);
+});
+
+Run("解析 Claude 新版嵌套 rate_limits 与模型对象", () =>
+{
+    var usage = ClaudeUsageClient.ParsePayload(
+        """
+        {
+          "rate_limits": {
+            "five_hour": { "utilization": 21.4, "resets_at": "2026-08-03T00:00:00Z" },
+            "seven_day": { "utilization": 44.6, "resets_at": "2026-08-08T00:00:00Z" },
+            "model_scoped": [
+              { "model": { "display_name": "Fable 5.1" }, "utilization": 7.5, "resets_at": "2026-08-08T00:00:00Z" },
+              { "model": { "display_name": "Opus 4.8" }, "utilization": 13.2, "resets_at": "2026-08-08T00:00:00Z" }
+            ],
+            "extra_usage": {
+              "is_enabled": true,
+              "monthly_limit": 2000,
+              "used_credits": 125,
+              "utilization": 6.25,
+              "currency": "USD"
+            }
+          }
+        }
+        """,
+        DateTimeOffset.UnixEpoch,
+        "team");
+
+    Equal(21, usage.FiveHour!.UsedPercent);
+    Equal(45, usage.Weekly!.UsedPercent);
+    Equal(2, usage.ScopedLimits.Count);
+    Equal("Fable 5.1 点数额度", usage.ScopedLimits[0].DisplayName);
+    Equal("Opus 4.8 周额度", usage.ScopedLimits[1].DisplayName);
+    Equal<decimal?>(1.25m, usage.ExtraUsage!.UsedAmount);
+    Equal<decimal?>(20m, usage.ExtraUsage.LimitAmount);
+    Equal("team", usage.SubscriptionType);
 });
 
 Run("没有钱包的账号不会显示空的点数余额", () =>
@@ -1249,7 +1302,19 @@ Run("解析 Claude 官方状态栏的 5 小时、7 天额度和上下文", () =>
           "context_window": { "used_percentage": 37.4 },
           "rate_limits": {
             "five_hour": { "used_percentage": 23.5, "resets_at": 1784721600 },
-            "seven_day": { "used_percentage": 41.2, "resets_at": 1785153600 }
+            "seven_day": { "used_percentage": 41.2, "resets_at": 1785153600 },
+            "seven_day_overage_included": { "used_percentage": 14.0, "resets_at": 1785153600 },
+            "model_scoped": [
+              { "display_name": "Fable 5.1", "utilization": 14.0, "resets_at": 1785153600 },
+              { "display_name": "Opus 4.8", "utilization": 32.0, "resets_at": 1785153600 }
+            ],
+            "extra_usage": {
+              "is_enabled": true,
+              "used_credits": 125,
+              "monthly_limit": 1000,
+              "utilization": 12.5,
+              "currency": "USD"
+            }
           }
         }
         """);
@@ -1261,6 +1326,15 @@ Run("解析 Claude 官方状态栏的 5 小时、7 天额度和上下文", () =>
     Equal("Opus", status.ModelName);
     Equal<int?>(37, status.ContextUsedPercent);
     Equal(DateTimeOffset.Parse("2026-07-22T10:15:30Z"), status.ObservedAt);
+    Equal(2, status.ScopedLimits!.Count);
+    Equal("Fable 5.1 点数额度", status.ScopedLimits[0].DisplayName);
+    Equal(true, status.ScopedLimits[0].UsesUsageCredits);
+    Equal("Opus 4.8 周额度", status.ScopedLimits[1].DisplayName);
+    Equal(32, status.ScopedLimits[1].UsedPercent);
+    Equal(true, status.ExtraUsage!.IsEnabled);
+    Equal<decimal?>(1.25m, status.ExtraUsage.UsedAmount);
+    Equal<decimal?>(10m, status.ExtraUsage.LimitAmount);
+    Equal<int?>(13, status.ExtraUsage.UsedPercent);
 });
 
 Run("解析 Claude 本机会话 Token 并按消息去重生成历史", () =>
@@ -1308,7 +1382,14 @@ Run("从会话记录读取当前模型与上下文占用", () =>
     Equal(200_000L, small.ContextWindow);
     Equal(25, small.ContextUsedPercent);
     // The trailing date stamp is not part of the display name.
-    Equal("Haiku 4 5", small.DisplayModelName);
+    Equal("Haiku 4.5", small.DisplayModelName);
+
+    var fable = ClaudeTranscriptParser.TryParseSessionState(
+        """
+        {"type":"assistant","timestamp":"2026-07-28T06:30:00+09:00","message":{"model":"claude-fable-5-1","usage":{"input_tokens":10,"output_tokens":2}}}
+        """,
+        DateTimeOffset.UnixEpoch)!;
+    Equal("Fable 5.1", fable.DisplayModelName);
 });
 
 Run("Claude 监控器从会话记录得出模型与上下文，不依赖状态栏桥接", () =>
@@ -1632,8 +1713,9 @@ RunSta("悬浮球 Codex 循环切换 5 小时、周和 Luna 储备额度", () =>
     var codexLunaReserve = new RateLimitWindow(72, now.AddDays(1), 10_080);
     var claudeFiveHour = new RateLimitWindow(25, now.AddMinutes(47), 300);
     var claudeWeekly = new RateLimitWindow(60, now.AddDays(3).AddHours(4), 10_080);
+    var claudeFable = new RateLimitWindow(34, now.AddDays(5).AddHours(1), 10_080);
 
-    gauge.Update(codexFiveHour, codexWeekly, codexLunaReserve, claudeFiveHour, claudeWeekly);
+    gauge.Update(codexFiveHour, codexWeekly, codexLunaReserve, claudeFiveHour, claudeWeekly, claudeFable);
     Equal(GaugeQuotaPeriod.FiveHour, gauge.CodexPeriod);
     Equal(GaugeQuotaPeriod.FiveHour, gauge.ClaudePeriod);
     Equal("CODEX", gauge.CodexTitleText);
@@ -1668,10 +1750,20 @@ RunSta("悬浮球 Codex 循环切换 5 小时、周和 Luna 储备额度", () =>
     Equal("40%", gauge.ClaudePercentText);
     Equal("W · 3d 4h", gauge.ClaudeResetText);
 
+    gauge.ToggleProvider(GaugeProvider.Claude);
+    Equal(GaugeQuotaPeriod.FableCredits, gauge.ClaudePeriod);
+    Equal("66%", gauge.ClaudePercentText);
+    Equal("F · 5d 1h", gauge.ClaudeResetText);
+
+    gauge.ToggleProvider(GaugeProvider.Claude);
+    Equal(GaugeQuotaPeriod.FiveHour, gauge.ClaudePeriod);
+    Equal("75%", gauge.ClaudePercentText);
+    Equal("H · 47m", gauge.ClaudeResetText);
+
     now = now.AddHours(1);
     gauge.RefreshCountdowns();
     Equal("W · 6d 1h", gauge.CodexResetText);
-    Equal("W · 3d 3h", gauge.ClaudeResetText);
+    Equal("H · 0m", gauge.ClaudeResetText);
 
     Equal(GaugeProvider.Codex, GaugeControl.ProviderAt(new System.Windows.Point(10, 58)));
     Equal(GaugeProvider.Claude, GaugeControl.ProviderAt(new System.Windows.Point(106, 58)));
@@ -1731,6 +1823,23 @@ RunSta("悬浮球按实际窗口跳过缺失的 5 小时额度", () =>
     Equal("80%", gauge.CodexPercentText);
     gauge.ToggleProvider(GaugeProvider.Codex);
     Equal(GaugeQuotaPeriod.Weekly, gauge.CodexPeriod);
+
+    var claudeFable = new RateLimitWindow(31, now.AddDays(4), 10_080);
+    gauge.Update(null, weekly, null, null, weekly, claudeFable);
+    Equal(GaugeQuotaPeriod.Weekly, gauge.ClaudePeriod);
+    gauge.ToggleProvider(GaugeProvider.Claude);
+    Equal(GaugeQuotaPeriod.FableCredits, gauge.ClaudePeriod);
+    Equal("69%", gauge.ClaudePercentText);
+    gauge.ToggleProvider(GaugeProvider.Claude);
+    Equal(GaugeQuotaPeriod.Weekly, gauge.ClaudePeriod);
+
+    // A refresh can remove an optional bucket; the orb should move to the next real window
+    // immediately instead of leaving the previous selection blank until the next click.
+    gauge.ToggleProvider(GaugeProvider.Claude);
+    Equal(GaugeQuotaPeriod.FableCredits, gauge.ClaudePeriod);
+    gauge.Update(null, weekly, null, null, weekly, null);
+    Equal(GaugeQuotaPeriod.Weekly, gauge.ClaudePeriod);
+    Equal("90%", gauge.ClaudePercentText);
 });
 
 Run("Codex 旧额度在卡片提示和托盘中带陈旧标记", () =>
@@ -2304,11 +2413,16 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
         var lunaUsedText = (TextBlock)mainWindow.FindName("LunaUsedText");
         var lunaResetText = (TextBlock)mainWindow.FindName("LunaResetText");
         mainWindow.UpdateLayout();
-        lunaCaption.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-        lunaRemaining.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-        if (lunaCaption.DesiredSize.Width + lunaRemaining.DesiredSize.Width > lunaHeader.ActualWidth)
+        var lunaTitleRight = lunaCaption.TranslatePoint(
+            new System.Windows.Point(lunaCaption.ActualWidth, 0),
+            lunaHeader).X;
+        var lunaPercentLeft = lunaRemaining.TranslatePoint(
+            new System.Windows.Point(0, 0),
+            lunaHeader).X;
+        if (lunaTitleRight > lunaPercentLeft + 0.1)
         {
-            throw new Exception("Luna 额度卡的标题和百分比发生重叠。");
+            throw new Exception(
+                $"Luna 额度卡的标题和百分比发生重叠：标题右边界 {lunaTitleRight:0.##}，百分比左边界 {lunaPercentLeft:0.##}。");
         }
 
         Equal(MainWindow.FormatResetCardTime(codexFetchedAt.AddHours(2)), fiveResetText.Text);
@@ -2368,7 +2482,16 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             new ClaudeAccountUsage(
                 new RateLimitWindow(24, DateTimeOffset.Now.AddHours(2), 300),
                 new RateLimitWindow(41, DateTimeOffset.Now.AddDays(4), 10_080),
-                ScopedLimits: [],
+                ScopedLimits:
+                [
+                    new ClaudeScopedLimit(
+                        "seven_day_overage_included",
+                        "Fable 5.1 点数额度",
+                        12,
+                        DateTimeOffset.Now.AddDays(5),
+                        ClaudeLimitBilling.UsageCredits,
+                        "Fable 5.1"),
+                ],
                 ExtraUsage: new ClaudeExtraUsage(
                     IsEnabled: true,
                     UsedAmount: 4.5m,
@@ -2404,9 +2527,77 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
         mainWindow.UpdateLayout();
         var lunaQuotaCard = mainWindow.FindName("LunaQuotaCard") as Border
             ?? throw new Exception("未找到 Luna 额度卡容器。");
-        Equal(Visibility.Collapsed, lunaQuotaCard.Visibility);
-        Equal(0d, ((ColumnDefinition)mainWindow.FindName("LunaColumn")!).Width.Value);
-        Equal(0d, ((ColumnDefinition)mainWindow.FindName("LunaGapColumn")!).Width.Value);
+        Equal(Visibility.Visible, lunaQuotaCard.Visibility);
+        Equal("Fable 5.1 点数额度", lunaCaption.Text);
+        Equal("88%", lunaRemaining.Text);
+        Equal(11d, lunaCaption.FontSize);
+        var updateResetLabels = typeof(MainWindow).GetMethod(
+            "UpdateResetLabels",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new Exception("未找到额度重置标签刷新入口。");
+        updateResetLabels.Invoke(mainWindow, null);
+        if (lunaResetText.Text == Loc.T("card.notProvided"))
+        {
+            throw new Exception("Claude Fable 点数额度的重置时间被刷新逻辑清空。");
+        }
+        if (((ColumnDefinition)mainWindow.FindName("LunaColumn")!).Width.Value <= 0)
+        {
+            throw new Exception("Claude Fable 点数额度卡没有占用第三列。");
+        }
+        var claudeFableSnapshot = new ClaudeUsageSnapshot(
+            new ClaudeAccountUsage(
+                new RateLimitWindow(24, DateTimeOffset.Now.AddHours(2), 300),
+                new RateLimitWindow(41, DateTimeOffset.Now.AddDays(4), 10_080),
+                [new ClaudeScopedLimit(
+                    "seven_day_overage_included",
+                    "Fable 5.1 点数额度",
+                    12,
+                    DateTimeOffset.Now.AddDays(5),
+                    ClaudeLimitBilling.UsageCredits,
+                    "Fable 5.1")],
+                new ClaudeExtraUsage(true, 4.5m, 50m, 9, "USD", null),
+                "pro",
+                DateTimeOffset.Now),
+            null,
+            new ClaudeStatusUsage(
+                null,
+                null,
+                "Opus",
+                37,
+                DateTimeOffset.Now),
+            new AccountTokenUsage(
+                1_300,
+                1_100,
+                null,
+                2,
+                2,
+                [
+                    new DailyTokenUsage(new DateOnly(2026, 7, 21), 200),
+                    new DailyTokenUsage(new DateOnly(2026, 7, 22), 1_100),
+                ],
+                DateTimeOffset.Now),
+            true,
+            true,
+            DateTimeOffset.Now);
+        foreach (var language in new[] { AppLanguage.Chinese, AppLanguage.English, AppLanguage.Korean })
+        {
+            Loc.SetLanguage(language);
+            mainWindow.ApplyClaudeSnapshot(claudeFableSnapshot);
+            mainWindow.UpdateLayout();
+            var titleRight = lunaCaption.TranslatePoint(
+                new System.Windows.Point(lunaCaption.ActualWidth, 0),
+                lunaHeader).X;
+            var percentLeft = lunaRemaining.TranslatePoint(
+                new System.Windows.Point(0, 0),
+                lunaHeader).X;
+            if (titleRight > percentLeft + 0.1)
+            {
+                throw new Exception($"{language} 的 Fable 点数额度标题和百分比发生重叠。");
+            }
+        }
+        Loc.SetLanguage(AppLanguage.Chinese);
+        mainWindow.ApplyClaudeSnapshot(claudeFableSnapshot);
+        mainWindow.UpdateLayout();
         Equal(
             "CLAUDE实时监控中",
             ((TextBlock)mainWindow.FindName("ConnectionText")).Text);

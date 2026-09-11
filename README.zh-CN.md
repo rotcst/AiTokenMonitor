@@ -21,14 +21,17 @@
 
 - **两个 Provider，一个窗口**：底部标签在 Codex / Claude 之间切换。
 - **真实额度，不靠估算**：读取与 CLI 相同的官方数据面——
-  - Claude：`GET https://api.anthropic.com/api/oauth/usage`（即 `/usage` 背后的数据源）。
+  - Claude：`GET https://api.anthropic.com/api/oauth/usage`（即 `/usage` 背后的数据源）。接口新增的
+    `seven_day_overage_included`、`model_scoped[]`、`extra_usage`、`spend` 字段会在返回时解析。
+    Fable 5.1 走独立的点数额度，不计入订阅窗口，界面会单独标出。
   - Codex：头部额度采用 `codex app-server` 的 `account/rateLimits/read`，并用 ChatGPT 后端
     `wham/usage`、`wham/profiles/me`、`wham/rate-limit-reset-credits` 补充详情。
 - **5 小时、周额度与 Luna 储备额度**，含精确重置时间和倒计时（Luna 仅在账号和接口提供时显示）。
 - **充值余额、用量额度**、支出上限、限额提示文案。
 - **液面悬浮球**：从主窗口右键菜单切换到小悬浮球，左右两个水舱分别是 Codex 与 Claude，水位＝各自的
-  **剩余额度**（满舱 100%、见底 0%）。单击左侧会循环切换 Codex 的 5 小时、周、Luna 储备额度；右侧仍切换
-  Claude 的 5 小时/周额度。服务标题位于百分比上方，当前窗口和重置倒计时位于下方。通过悬浮球右键菜单可恢复主窗口。
+  **剩余额度**（满舱 100%、见底 0%）。单击左侧会循环切换 Codex 的 5 小时、周、Luna 储备额度；右侧会按账号
+  实际返回的窗口循环切换 Claude 的 5 小时、周、Fable 点数额度，缺失的窗口自动跳过。服务标题位于百分比上方，
+  当前窗口和重置倒计时位于下方。通过悬浮球右键菜单可恢复主窗口。
 - **Token 历史**：累计、当天、近 7 天、逐日柱状图，以及可滚动的完整列表。
 - **当前模型与上下文占用**，从本机会话记录读取——终端 CLI 和桌面端都适用。
 - **三语界面**（简体中文 / English / 한국어），按系统语言自动选择，可在任一右键菜单里随时切换。
@@ -91,8 +94,8 @@ Codex 以受支持的 `codex app-server` 额度快照作为头部窗口，并用
 - 访问令牌**只在内存中使用**，仅用于请求官方用量接口，绝不落盘、也不发往任何第三方。
 - 桌面端令牌缓存用当前 Windows 用户自己的 DPAPI 密钥解密（和桌面端同一套机制），数据不出本机。
 - 会话解析只提取消息 ID、时间戳和 `usage` Token 字段，不保存任何提示词或回复。
-- **Claude 预付点数余额**（计费页上的那个数字）**不显示**：Claude Code 用的 OAuth 用量接口并不返回它，
-  要读它需要你完整的 claude.ai 网页会话，本程序刻意不去碰。
+- Claude OAuth 接口若返回 `spend` 预付点数钱包和本期 `extra_usage` 消耗，程序会显示这些数据；字段缺失时保持空值，
+  不抓取 claude.ai 网页会话，也不会自行推算余额。
 
 ## 语言
 

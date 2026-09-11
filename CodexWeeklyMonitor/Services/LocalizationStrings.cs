@@ -42,6 +42,8 @@ internal static class Strings
         ["card.fiveHour"] = ["5 小时额度", "5-hour limit", "5시간 한도"],
         ["card.weekly"] = ["周额度", "Weekly limit", "주간 한도"],
         ["card.lunaReserve"] = ["Luna 储备额度", "Luna Reserve", "Luna 예비 한도"],
+        ["card.fableCredits"] = ["Fable 5.1 点数额度", "Fable 5.1 point quota", "Fable 5.1 포인트 한도"],
+        ["card.modelWeekly"] = ["{0} 周额度", "{0} weekly limit", "{0} 주간 한도"],
         ["card.used"] = ["已用 {0}%", "{0}% used", "{0}% 사용"],
         ["card.usedApprox"] = ["约已用 {0}% · 旧数据", "~{0}% used · stale", "약 {0}% 사용 · 이전 데이터"],
         ["card.notProvided"] = ["未提供", "Not provided", "제공 안 됨"],
@@ -149,7 +151,7 @@ internal static class Strings
         ["update.installErrorDetail"] = ["更新安装失败：{0}", "Update installation failed: {0}", "업데이트 설치 실패: {0}"],
 
         // Gauge / orb mode
-        ["gauge.switchHint"] = ["单击左侧循环切换 5 小时/周/Luna 储备额度，右侧切换 5 小时/周额度；拖动可移动", "Click the left side to cycle 5-hour/weekly/Luna reserve; the right side switches 5-hour/weekly; drag to move", "왼쪽을 클릭해 5시간·주간·Luna 예비 한도를 순환하고 오른쪽은 5시간·주간을 전환합니다. 드래그해 이동"],
+        ["gauge.switchHint"] = ["单击左侧循环切换 5 小时/周/Luna 储备额度，右侧切换 5 小时/周/Fable 点数额度；拖动可移动", "Click the left side to cycle 5-hour/weekly/Luna Reserve; the right side switches 5-hour/weekly/Fable point quota; drag to move", "왼쪽을 클릭해 5시간·주간·Luna 예비 한도를 순환하고 오른쪽은 5시간·주간·Fable 포인트 한도를 전환합니다. 드래그해 이동"],
 
         // Tray status lines
         ["tray.weeklyUnknown"] = ["{0}：周额度未知", "{0}: weekly unknown", "{0}: 주간 한도 미상"],

@@ -119,11 +119,11 @@ public static class UsageDetailBuilder
         var quota = new List<UsageDetailItem>();
         AddWindow(quota, Loc.T("card.fiveHour"), account?.FiveHour);
         AddWindow(quota, Loc.T("card.weekly"), account?.Weekly);
-        foreach (var scoped in account?.ScopedLimits ?? [])
+        foreach (var scoped in snapshot.ScopedLimits)
         {
             AddWindow(
                 quota,
-                scoped.DisplayName,
+                LocalizeScopedLabel(scoped),
                 new RateLimitWindow(scoped.UsedPercent, scoped.ResetsAt, null));
         }
 
@@ -133,6 +133,15 @@ public static class UsageDetailBuilder
         if (account?.Wallet is { } purse)
         {
             Add(wallet, Loc.T("lbl.currentBalance"), FormatMoney(purse.Balance, purse.Currency));
+            Add(wallet, Loc.T("lbl.isEnabled"), purse.IsEnabled switch
+            {
+                true => Loc.T("val.enabledShort"),
+                false => Loc.T("val.notEnabledShort"),
+                null => null,
+            });
+            Add(wallet, Loc.T("lbl.periodUsed"), FormatMoney(purse.Used, purse.Currency));
+            Add(wallet, Loc.T("lbl.periodCap"), FormatMoney(purse.Limit, purse.Currency));
+            Add(wallet, Loc.T("lbl.usedPercent"), purse.UsedPercent is { } percent ? $"{percent}%" : null);
             Add(wallet, Loc.T("lbl.autoReload"), purse.AutoReloadEnabled ? Loc.T("val.on") : Loc.T("val.off"));
             Add(wallet, Loc.T("lbl.reloadTrigger"), FormatMoney(purse.AutoReloadThreshold, purse.Currency));
             Add(wallet, Loc.T("lbl.reloadAmount"), FormatMoney(purse.AutoReloadAmount, purse.Currency));
@@ -142,7 +151,7 @@ public static class UsageDetailBuilder
         AddSection(sections, Loc.T("sec.wallet"), wallet);
 
         var credits = new List<UsageDetailItem>();
-        if (account?.ExtraUsage is { } extra)
+        if (snapshot.ExtraUsage is { } extra)
         {
             Add(credits, Loc.T("lbl.isEnabled"), extra.IsEnabled ? Loc.T("val.enabledShort") : Loc.T("val.notEnabledShort"));
             Add(credits, Loc.T("lbl.periodUsed"), FormatMoney(extra.UsedAmount, extra.Currency));
@@ -196,6 +205,37 @@ public static class UsageDetailBuilder
 
     private static string Timestamp(DateTimeOffset value) =>
         value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+
+    private static string LocalizeScopedLabel(ClaudeScopedLimit scoped)
+    {
+        if (scoped.IsFable)
+        {
+            return Loc.T("card.fableCredits");
+        }
+
+        if (scoped.UsesUsageCredits)
+        {
+            return scoped.DisplayName;
+        }
+
+        var modelName = scoped.Key switch
+        {
+            "seven_day_opus" => "Opus",
+            "seven_day_sonnet" => "Sonnet",
+            "seven_day_cowork" => "Cowork",
+            "seven_day_oauth_apps" => Loc.Current switch
+            {
+                AppLanguage.English => "Third-party apps",
+                AppLanguage.Korean => "타사 앱",
+                _ => "第三方应用",
+            },
+            _ => scoped.ModelName,
+        };
+
+        return string.IsNullOrWhiteSpace(modelName)
+            ? scoped.DisplayName
+            : Loc.T("card.modelWeekly", modelName);
+    }
 
     private static void AddWindow(
         ICollection<UsageDetailItem> items,

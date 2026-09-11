@@ -396,12 +396,19 @@
                                 <RowDefinition Height="15" />
                             </Grid.RowDefinitions>
                             <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Text="{loc:Str card.fiveHour}"
+                                           Grid.Column="0"
                                            VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
                                            FontSize="11"
                                            Foreground="{StaticResource MutedTextBrush}" />
                                 <TextBlock x:Name="FiveHourRemainingText"
                                            Text="--%"
+                                           Grid.Column="1"
                                            HorizontalAlignment="Right"
                                            VerticalAlignment="Center"
                                            FontSize="20"
@@ -453,12 +460,19 @@
                                 <RowDefinition Height="15" />
                             </Grid.RowDefinitions>
                             <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock Text="{loc:Str card.weekly}"
+                                           Grid.Column="0"
                                            VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
                                            FontSize="11"
                                            Foreground="{StaticResource MutedTextBrush}" />
                                 <TextBlock x:Name="WeeklyRemainingText"
                                            Text="--%"
+                                           Grid.Column="1"
                                            HorizontalAlignment="Right"
                                            VerticalAlignment="Center"
                                            FontSize="20"
@@ -510,14 +524,21 @@
                                 <RowDefinition Height="15" />
                             </Grid.RowDefinitions>
                             <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
                                 <TextBlock x:Name="LunaCaption"
                                            Text="{loc:Str card.lunaReserve}"
+                                           Grid.Column="0"
                                            AutomationProperties.Name="{loc:Str card.lunaReserve}"
                                            VerticalAlignment="Center"
-                                           FontSize="8.5"
+                                           TextTrimming="CharacterEllipsis"
+                                           FontSize="11"
                                            Foreground="{StaticResource MutedTextBrush}" />
                                 <TextBlock x:Name="LunaRemainingText"
                                            Text="--%"
+                                           Grid.Column="1"
                                            HorizontalAlignment="Right"
                                            VerticalAlignment="Center"
                                            FontSize="20"

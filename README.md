@@ -24,7 +24,10 @@ system tray after opening the main window. Launching it again restores the exist
 
 - **Two providers, one window.** Toggle between Codex and Claude with the tabs at the bottom.
 - **Real quota, not guesses.** Reads the same official surfaces the CLIs use:
-  - Claude: `GET https://api.anthropic.com/api/oauth/usage` (the source behind `/usage`).
+  - Claude: `GET https://api.anthropic.com/api/oauth/usage` (the source behind `/usage`). The
+    optional `seven_day_overage_included`, `model_scoped[]`, `extra_usage`, and `spend` fields are
+    parsed when present. Fable 5.1 is shown as a separate point-quota bucket because it is billed
+    through usage credits rather than a subscription window.
   - Codex: `codex app-server` method `account/rateLimits/read` for headline windows, enriched by
     ChatGPT backend `wham/usage`, `wham/profiles/me`, and `wham/rate-limit-reset-credits`.
 - **5-hour, weekly, and Luna Reserve windows** with exact reset times and countdowns (Luna appears when the account and API expose it).
@@ -32,7 +35,8 @@ system tray after opening the main window. Launching it again restores the exist
 - **Liquid orb mode**: open the small floating orb from the main window's context menu. Its two tanks
   show Codex on the left and Claude on the right, with water level equal to *remaining* quota (full
   is 100%, dry is 0%). Click the Codex side to cycle through its 5-hour, weekly, and Luna Reserve
-  windows; the Claude side keeps its 5-hour/weekly switch. The provider title sits above the
+  windows; the Claude side cycles its 5-hour, weekly, and Fable point buckets when those windows
+  exist. The provider title sits above the
   percentage; the selected window and reset countdown sit below it. Use the orb's context menu to
   restore the main window.
 - **Token history**: lifetime, today, last 7 days, a daily bar chart, and a scrollable full list.
@@ -111,9 +115,9 @@ as "Rate limited · retry in N".
   mechanism the desktop app uses — and nothing leaves the machine.
 - Session parsing extracts only message IDs, timestamps and `usage` token counts; it never stores
   prompts or replies.
-- **Claude prepaid credit balance** (the number on the billing page) is *not* shown, because it is
-  not exposed by the OAuth usage endpoint Claude Code uses — reading it would require your full
-  claude.ai web session, which this app deliberately does not touch.
+- Claude's OAuth response may include a prepaid `spend` wallet and this period's `extra_usage`
+  spend. The app shows those values only when the endpoint returns them; it never scrapes a
+  claude.ai web session or invents a balance when the fields are absent.
 
 ## Language
 

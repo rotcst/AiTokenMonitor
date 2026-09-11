@@ -395,19 +395,21 @@ public partial class MainWindow : Window
             showLoadingPlaceholders || limits?.LunaReserve is not null);
     }
 
-    private void SetClaudeQuotaVisibility(ClaudeAccountUsage? account)
+    private void SetClaudeQuotaVisibility(ClaudeUsageSnapshot? snapshot)
     {
-        // Claude has no Luna bucket. Keep 5-hour/weekly placeholders while the account is still
-        // loading, then follow the two windows returned by the official usage response.
+        // Claude has no Luna bucket. Reuse the third card for the optional Fable point bucket so
+        // subscription windows and separately billed usage credits remain visually distinct.
+        var account = snapshot?.Account;
         var showLoadingPlaceholders = account is null;
         SetQuotaVisibility(
             showLoadingPlaceholders || account?.FiveHour is not null,
             showLoadingPlaceholders || account?.Weekly is not null,
-            showLuna: false);
+            showLuna: snapshot?.FableLimit is not null);
     }
 
     private void RenderCodex()
     {
+        SetLunaCardCaption(LunaCaption, "card.lunaReserve");
         BalanceCaption.Text = Loc.T("card.balance");
         ResetCreditsCaption.Text = Loc.T("card.resetCredits");
         LifetimeTokensCaption.Text = Loc.T("card.lifetimeTokens");
@@ -518,7 +520,11 @@ public partial class MainWindow : Window
         var snapshot = _claudeSnapshot;
         var account = snapshot?.Account;
         var status = snapshot?.Status;
-        SetClaudeQuotaVisibility(account);
+        SetClaudeQuotaVisibility(snapshot);
+        var fable = snapshot?.FableLimit;
+        SetLunaCardCaption(
+            LunaCaption,
+            fable is null ? "card.lunaReserve" : "card.fableCredits");
 
         ApplyRateWindow(
             account?.FiveHour,
@@ -532,7 +538,15 @@ public partial class MainWindow : Window
             WeeklyUsedText,
             WeeklyProgress,
             WeeklyResetText);
-        ApplyClaudeExtraUsageCard(account?.ExtraUsage, account?.Wallet);
+        ApplyRateWindow(
+            fable is null
+                ? null
+                : new RateLimitWindow(fable.UsedPercent, fable.ResetsAt, 10_080),
+            LunaRemainingText,
+            LunaUsedText,
+            LunaProgress,
+            LunaResetText);
+        ApplyClaudeExtraUsageCard(snapshot?.ExtraUsage, account?.Wallet);
         ApplyClaudeSecondaryCard(account, snapshot);
 
         var tokenStatus = snapshot switch
@@ -555,6 +569,7 @@ public partial class MainWindow : Window
         if (account is not null)
         {
             var observedUsage = new[] { account.FiveHour?.UsedPercent, account.Weekly?.UsedPercent }
+                .Concat(snapshot!.ScopedLimits.Select(limit => (int?)limit.UsedPercent))
                 .Where(value => value.HasValue)
                 .Select(value => value!.Value)
                 .DefaultIfEmpty(0)
@@ -642,15 +657,15 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Prefers a model-scoped weekly bucket, then the status line's context window, then the plan
-    /// name - whichever the account actually reports.
+    /// Shows another subscription model bucket in the secondary slot after Fable has its own card,
+    /// then falls back to the status line's context window or the plan name.
     /// </summary>
     private void ApplyClaudeSecondaryCard(ClaudeAccountUsage? account, ClaudeUsageSnapshot? snapshot)
     {
-        if (account?.ScopedLimits is { Count: > 0 } scoped)
+        var scoped = snapshot?.ScopedLimits.FirstOrDefault(limit => !limit.IsFable);
+        if (scoped is { } limit)
         {
-            var limit = scoped[0];
-            ResetCreditsCaption.Text = limit.DisplayName;
+            ResetCreditsCaption.Text = LocalizeClaudeScopedLabel(limit);
             ResetCreditsText.FontSize = 18;
             ResetCreditsText.Text = $"{limit.RemainingPercent}%";
             return;
@@ -667,6 +682,44 @@ public partial class MainWindow : Window
         ResetCreditsCaption.Text = Loc.T("card.plan");
         ResetCreditsText.FontSize = 14;
         ResetCreditsText.Text = FormatPlanName(account?.SubscriptionType) ?? "--";
+    }
+
+    private static string LocalizeClaudeScopedLabel(ClaudeScopedLimit scoped)
+    {
+        if (scoped.IsFable)
+        {
+            return Loc.T("card.fableCredits");
+        }
+
+        if (scoped.UsesUsageCredits)
+        {
+            return scoped.DisplayName;
+        }
+
+        var modelName = scoped.Key switch
+        {
+            "seven_day_opus" => "Opus",
+            "seven_day_sonnet" => "Sonnet",
+            "seven_day_cowork" => "Cowork",
+            "seven_day_oauth_apps" => Loc.Current switch
+            {
+                AppLanguage.English => "Third-party apps",
+                AppLanguage.Korean => "타사 앱",
+                _ => "第三方应用",
+            },
+            _ => scoped.ModelName,
+        };
+
+        return string.IsNullOrWhiteSpace(modelName)
+            ? scoped.DisplayName
+            : Loc.T("card.modelWeekly", modelName);
+    }
+
+    private static void SetLunaCardCaption(TextBlock caption, string resourceKey)
+    {
+        var text = Loc.T(resourceKey);
+        caption.Text = text;
+        System.Windows.Automation.AutomationProperties.SetName(caption, text);
     }
 
     private static string? FormatPlanName(string? subscriptionType)
@@ -882,7 +935,10 @@ public partial class MainWindow : Window
         {
             fiveHour = _claudeSnapshot?.FiveHour;
             weekly = _claudeSnapshot?.Weekly;
-            lunaReserve = null;
+            var fable = _claudeSnapshot?.FableLimit;
+            lunaReserve = fable is null
+                ? null
+                : new RateLimitWindow(fable.UsedPercent, fable.ResetsAt, 10_080);
         }
 
         SetCompactResetLabel(FiveHourResetText, fiveHour);
@@ -1163,12 +1219,16 @@ public partial class MainWindow : Window
     /// <summary>Feeds all selectable quota windows to each side of the orb.</summary>
     private void PushGaugeValues()
     {
+        var claudeFable = _claudeSnapshot?.FableLimit;
         _gaugeWindow?.SetWindows(
             _currentSnapshot?.RateLimits.FiveHour,
             _currentSnapshot?.RateLimits.Weekly,
             _currentSnapshot?.RateLimits.LunaReserve,
             _claudeSnapshot?.FiveHour,
-            _claudeSnapshot?.Weekly);
+            _claudeSnapshot?.Weekly,
+            claudeFable is null
+                ? null
+                : new RateLimitWindow(claudeFable.UsedPercent, claudeFable.ResetsAt, 10_080));
     }
 
     private static bool IsInsideButton(DependencyObject? element)
