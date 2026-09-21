@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Globalization;
 using System.IO;
@@ -2440,16 +2440,16 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
         var lunaUsedText = (TextBlock)mainWindow.FindName("LunaUsedText");
         var lunaResetText = (TextBlock)mainWindow.FindName("LunaResetText");
         mainWindow.UpdateLayout();
-        var lunaTitleRight = lunaCaption.TranslatePoint(
-            new System.Windows.Point(lunaCaption.ActualWidth, 0),
-            lunaHeader).X;
-        var lunaPercentLeft = lunaRemaining.TranslatePoint(
+        var lunaTitleBottom = lunaCaption.TranslatePoint(
+            new System.Windows.Point(0, lunaCaption.ActualHeight),
+            lunaHeader).Y;
+        var lunaPercentTop = lunaRemaining.TranslatePoint(
             new System.Windows.Point(0, 0),
-            lunaHeader).X;
-        if (lunaTitleRight > lunaPercentLeft + 0.1)
+            lunaHeader).Y;
+        if (lunaTitleBottom > lunaPercentTop + 0.1)
         {
             throw new Exception(
-                $"Luna 额度卡的标题和百分比发生重叠：标题右边界 {lunaTitleRight:0.##}，百分比左边界 {lunaPercentLeft:0.##}。");
+                $"Luna 额度卡的标题和百分比发生重叠：标题底边界 {lunaTitleBottom:0.##}，百分比顶边界 {lunaPercentTop:0.##}。");
         }
 
         Equal(MainWindow.FormatResetCardTime(codexFetchedAt.AddHours(2)), fiveResetText.Text);
@@ -2651,15 +2651,58 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             Loc.SetLanguage(language);
             mainWindow.ApplyClaudeSnapshot(claudeFableSnapshot);
             mainWindow.UpdateLayout();
-            var titleRight = lunaCaption.TranslatePoint(
-                new System.Windows.Point(lunaCaption.ActualWidth, 0),
-                lunaHeader).X;
-            var percentLeft = lunaRemaining.TranslatePoint(
+            var titleBottom = lunaCaption.TranslatePoint(
+                new System.Windows.Point(0, lunaCaption.ActualHeight),
+                lunaHeader).Y;
+            var percentTop = lunaRemaining.TranslatePoint(
                 new System.Windows.Point(0, 0),
-                lunaHeader).X;
-            if (titleRight > percentLeft + 0.1)
+                lunaHeader).Y;
+            if (titleBottom > percentTop + 0.1)
             {
                 throw new Exception($"{language} 的 Fable 点数额度标题和百分比发生重叠。");
+            }
+        }
+        foreach (var language in new[] { AppLanguage.Chinese, AppLanguage.English, AppLanguage.Korean })
+        {
+            Loc.SetLanguage(language);
+            foreach (var providerTab in new[] { codexTab, claudeTab })
+            {
+                providerTab.IsChecked = true;
+                mainWindow.UpdateLayout();
+                foreach (var prefix in new[] { "FiveHour", "Weekly", "Luna" })
+                {
+                    var quotaCard = (Border)mainWindow.FindName(prefix + "QuotaCard");
+                    if (quotaCard.Visibility != Visibility.Visible) continue;
+                    var percent = (TextBlock)mainWindow.FindName(prefix + "RemainingText");
+                    var header = (Grid)percent.Parent;
+                    var title = header.Children.OfType<TextBlock>().Single(text => text != percent);
+                    var progress = (System.Windows.Controls.ProgressBar)mainWindow.FindName(prefix + "Progress");
+                    var footer = (Grid)((TextBlock)mainWindow.FindName(prefix + "UsedText")).Parent;
+                    Equal(TextTrimming.None, title.TextTrimming);
+                    Equal(11d, title.FontSize);
+                    var probe = new TextBlock
+                    {
+                        Text = title.Text,
+                        FontFamily = title.FontFamily,
+                        FontSize = title.FontSize,
+                        FontWeight = title.FontWeight,
+                        TextWrapping = title.TextWrapping,
+                    };
+                    probe.Measure(new System.Windows.Size(title.ActualWidth, double.PositiveInfinity));
+                    if (probe.DesiredSize.Height > title.ActualHeight + (1 / VisualTreeHelper.GetDpi(title).DpiScaleY))
+                        throw new Exception($"{language} {prefix} 标题未完整显示：{probe.DesiredSize.Height}/{title.ActualHeight}，宽 {title.ActualWidth}。");
+                    var rows = new FrameworkElement[] { title, percent, progress, footer };
+                    for (var index = 0; index < rows.Length; index++)
+                    {
+                        var top = rows[index].TranslatePoint(new System.Windows.Point(), quotaCard).Y;
+                        var bottom = top + rows[index].ActualHeight;
+                        var nextTop = index + 1 < rows.Length
+                            ? rows[index + 1].TranslatePoint(new System.Windows.Point(), quotaCard).Y
+                            : quotaCard.ActualHeight;
+                        if (bottom > nextTop + 0.1)
+                            throw new Exception($"{language} {prefix} 四行布局重叠或越界。");
+                    }
+                }
             }
         }
         Loc.SetLanguage(AppLanguage.Chinese);

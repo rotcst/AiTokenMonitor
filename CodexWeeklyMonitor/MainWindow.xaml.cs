@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,7 +21,7 @@ namespace CodexWeeklyMonitor;
 
 public partial class MainWindow : Window
 {
-    private const double CollapsedHeight = 432;
+    private const double CollapsedHeight = 470;
     private const double ExpandPanelHeight = 236;
 
     private static readonly Brush WarningBrush = QuotaColorScale.BrushForRemaining(50);
