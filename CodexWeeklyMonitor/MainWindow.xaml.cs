@@ -124,10 +124,10 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Comes up straight into the tray for the launch Windows performs at sign-in.
+    /// Starts monitoring at sign-in and restores the orb if it was the saved display mode.
     /// </summary>
     /// <remarks>
-    /// The window is never shown, not shown-then-hidden. The first attempt showed it fully
+    /// The main window is never shown, not shown-then-hidden. The first attempt showed it fully
     /// transparent so that <see cref="FrameworkElement.Loaded"/> would fire, which was wrong twice
     /// over: <see cref="Window.Opacity"/> is only honoured on a window with
     /// <see cref="Window.AllowsTransparency"/> set, and clearing
@@ -135,9 +135,9 @@ public partial class MainWindow : Window
     /// HWND, so the first real appearance came up unpainted. Nothing in initialisation needs a
     /// visible window, so it simply runs without one.
     /// </remarks>
-    internal void StartHiddenInTray()
+    internal void StartAtSignIn()
     {
-        _ = InitializeAsync();
+        _ = InitializeAsync(atSignIn: true);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -158,7 +158,7 @@ public partial class MainWindow : Window
     /// for a normal launch and called directly when the app starts into the tray, so it must not
     /// depend on the window being visible - nothing here does.
     /// </summary>
-    private async Task InitializeAsync()
+    private async Task InitializeAsync(bool atSignIn = false)
     {
         if (_initialized)
         {
@@ -172,9 +172,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        RestorePlacement();
+        var placement = WindowPlacementStore.Load();
+        RestorePlacement(placement);
         // Normalise the header captions (arrow suffix) for whatever state placement restored.
         SetExpandedPanel(_expandedPanel);
+        if (atSignIn && placement?.RestoreGaugeAtSignIn == true)
+        {
+            ShowGauge(activate: false);
+        }
         _localTokenMonitor.Start();
         _claudeMonitor.Start();
         _refreshTimer.Start();
@@ -1032,14 +1037,13 @@ public partial class MainWindow : Window
             FetchedAt: todayUsage.UpdatedAt);
     }
 
-    private void RestorePlacement()
+    private void RestorePlacement(WindowPlacement? placement)
     {
         // Now that the card owns a taskbar button, WPF honours the show-state the launcher passed
         // in STARTUPINFO, which can start it iconic. The monitor should always come up visible.
         WindowState = WindowState.Normal;
 
         var workArea = SystemParameters.WorkArea;
-        var placement = WindowPlacementStore.Load();
         if (placement is { GaugeLeft: { } gaugeLeft, GaugeTop: { } gaugeTop } &&
             double.IsFinite(gaugeLeft) && double.IsFinite(gaugeTop))
         {
@@ -1096,8 +1100,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        ShowGauge(activate: true);
         SavePlacement();
+    }
 
+    private void ShowGauge(bool activate)
+    {
         if (_gaugeWindow is null)
         {
             _gaugeWindow = new GaugeWindow { Topmost = Topmost };
@@ -1119,10 +1127,17 @@ public partial class MainWindow : Window
             _gaugeWindow.PlaceOrbAt(orbTopLeft.X, orbTopLeft.Y);
         }
 
+        _gaugeWindow.ShowActivated = activate;
         _gaugeWindow.Show();
-        _gaugeWindow.Activate();
+        if (activate)
+        {
+            _gaugeWindow.Activate();
+        }
         ShowInTaskbar = false;
-        Hide();
+        if (IsVisible)
+        {
+            Hide();
+        }
     }
 
     internal void ExitGaugeMode()
@@ -1651,7 +1666,8 @@ public partial class MainWindow : Window
         Topmost,
         _expandedPanel == ExpandedPanel.Details,
         _gaugeTopLeft?.X,
-        _gaugeTopLeft?.Y);
+        _gaugeTopLeft?.Y,
+        IsGaugeVisible);
 
     private void CaptureGaugePlacement()
     {

@@ -314,6 +314,22 @@ internal static class ClaudeCredentialStore
             : Path.GetFullPath(localApplicationData);
         AddIfCredentialDirectory(directories, Path.Combine(localRoot, "Claude"));
         AddIfCredentialDirectory(directories, Path.Combine(localRoot, "AnthropicClaude"));
+        var desktopDataDirectory = Path.Combine(localRoot, "Claude-Data");
+        try
+        {
+            if (Directory.Exists(desktopDataDirectory))
+            {
+                // Current MSIX builds keep their Electron profile outside the Packages tree.
+                foreach (var directory in Directory.EnumerateDirectories(desktopDataDirectory, "claude_*"))
+                {
+                    AddIfCredentialDirectory(directories, directory);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            DiagnosticsLog.Write("ClaudeCredentialStore", $"Claude desktop data discovery failed: {exception.GetType().Name}");
+        }
 
         var packagesDirectory = Path.Combine(localRoot, "Packages");
         if (!Directory.Exists(packagesDirectory))

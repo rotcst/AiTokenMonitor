@@ -1167,19 +1167,22 @@ Run("从 CLI 凭据和桌面端令牌缓存解析 Claude 访问令牌", () =>
     Equal(true, desktopTokens[0].IsExpired);
 });
 
-Run("自动发现并解密 Microsoft Store Claude 桌面凭据", () =>
+foreach (var profilePath in new[]
+         {
+             Path.Combine("Packages", "Claude_test", "LocalCache", "Roaming", "Claude"),
+             Path.Combine("Claude-Data", "claude_test"),
+         })
+{
+    Run($"自动发现并解密 Claude 桌面凭据：{profilePath}", () => VerifyClaudeDesktopProfile(profilePath));
+}
+
+static void VerifyClaudeDesktopProfile(string profilePath)
 {
     var root = Path.Combine(Path.GetTempPath(), "AiTokenMonitorTests", Guid.NewGuid().ToString("N"));
     var localRoot = Path.Combine(root, "Local");
     var roamingRoot = Path.Combine(root, "Roaming");
     var claudeHome = Path.Combine(root, "ClaudeHome");
-    var desktopDirectory = Path.Combine(
-        localRoot,
-        "Packages",
-        "Claude_test",
-        "LocalCache",
-        "Roaming",
-        "Claude");
+    var desktopDirectory = Path.Combine(localRoot, profilePath);
     Directory.CreateDirectory(desktopDirectory);
     Directory.CreateDirectory(claudeHome);
 
@@ -1219,7 +1222,7 @@ Run("自动发现并解密 Microsoft Store Claude 桌面凭据", () =>
             roamingApplicationData: roamingRoot);
         if (!discovered.Contains(desktopDirectory, StringComparer.OrdinalIgnoreCase))
         {
-            throw new Exception("没有发现 Microsoft Store Claude 的 LocalCache\\Roaming 凭据目录。");
+            throw new Exception("没有发现 Microsoft Store Claude 凭据目录。");
         }
 
         var resolved = ClaudeCredentialStore.ResolveAll(
@@ -1239,7 +1242,7 @@ Run("自动发现并解密 Microsoft Store Claude 桌面凭据", () =>
             Directory.Delete(root, recursive: true);
         }
     }
-});
+}
 
 Run("陈旧的 Claude 令牌返回 401 时自动改用下一个凭据", () =>
 {
@@ -1562,6 +1565,18 @@ Run("窗口位置未初始化时不写入也不抛出", () =>
 {
     // Regression: serializing Infinity threw and took the whole process down on shutdown.
     WindowPlacementStore.Save(new WindowPlacement(double.PositiveInfinity, double.NaN, true));
+});
+
+Run("开机悬浮球遵循已保存模式并兼容旧坐标", () =>
+{
+    var legacy = JsonSerializer.Deserialize<WindowPlacement>(
+        """{"Left":100,"Top":200,"Topmost":true,"GaugeLeft":300,"GaugeTop":400}""")!;
+    Equal(true, legacy.RestoreGaugeAtSignIn);
+    Equal(false, (legacy with { GaugeTop = null }).RestoreGaugeAtSignIn);
+    Equal(false, (legacy with { GaugeMode = false }).RestoreGaugeAtSignIn);
+    var savedGauge = legacy with { GaugeMode = true, GaugeLeft = null, GaugeTop = null };
+    Equal(true, JsonSerializer.Deserialize<WindowPlacement>(
+        JsonSerializer.Serialize(savedGauge))!.RestoreGaugeAtSignIn);
 });
 
 Run("GitHub Release 更新元数据、版本和 SHA-256 校验", () =>
