@@ -400,7 +400,8 @@
                                     <RowDefinition Height="*" />
                                     <RowDefinition Height="28" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="{loc:Str card.fiveHour}"
+                                <TextBlock x:Name="FiveHourCaption"
+                                           Text="{loc:Str card.fiveHour}"
                                            Grid.Column="0"
                                            VerticalAlignment="Center"
                                            TextWrapping="Wrap"
@@ -464,7 +465,8 @@
                                     <RowDefinition Height="*" />
                                     <RowDefinition Height="28" />
                                 </Grid.RowDefinitions>
-                                <TextBlock Text="{loc:Str card.weekly}"
+                                <TextBlock x:Name="WeeklyCaption"
+                                           Text="{loc:Str card.weekly}"
                                            Grid.Column="0"
                                            VerticalAlignment="Center"
                                            TextWrapping="Wrap"
@@ -916,7 +918,7 @@
                         BorderBrush="{StaticResource CardBorderBrush}"
                         BorderThickness="1"
                         CornerRadius="9">
-                    <UniformGrid Rows="1" Columns="2">
+                    <UniformGrid Rows="1" Columns="3">
                         <RadioButton x:Name="CodexProviderTab"
                                      GroupName="UsageProvider"
                                      Tag="Codex"
@@ -948,6 +950,23 @@
                                          VerticalAlignment="Center"
                                          Fill="#D9906E" />
                                 <TextBlock Text="Claude"
+                                           FontSize="10.5"
+                                           FontWeight="SemiBold" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="AntigravityProviderTab"
+                                     GroupName="UsageProvider"
+                                     Tag="Antigravity"
+                                     Style="{StaticResource ProviderTabStyle}"
+                                     AutomationProperties.Name="{loc:Str tab.antigravity}"
+                                     Checked="ProviderTab_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="5"
+                                         Height="5"
+                                         Margin="0,0,7,0"
+                                         VerticalAlignment="Center"
+                                         Fill="#58A6FF" />
+                                <TextBlock Text="Antigravity"
                                            FontSize="10.5"
                                            FontWeight="SemiBold" />
                             </StackPanel>

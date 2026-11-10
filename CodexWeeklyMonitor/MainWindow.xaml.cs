@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private static readonly Brush WarningBrush = QuotaColorScale.BrushForRemaining(50);
     private static readonly Brush DangerBrush = QuotaColorScale.BrushForRemaining(0);
     private static readonly Brush UnavailableBrush = CreateBrush(0x5B, 0x66, 0x72);
+    private static readonly Brush AntigravityBarBrush = CreateBrush(0x58, 0xA6, 0xFF);
 
     /// <summary>How often a long-running instance re-checks GitHub for a newer release.</summary>
     private static readonly TimeSpan UpdateCheckInterval = TimeSpan.FromHours(6);
@@ -43,6 +44,7 @@ public partial class MainWindow : Window
     private readonly IUpdateService _updateService;
     private readonly LocalSessionTokenMonitor _localTokenMonitor;
     private readonly ClaudeUsageMonitor _claudeMonitor;
+    private readonly AntigravityUsageMonitor _antigravityMonitor;
     private readonly bool _monitoringEnabled;
     private readonly DispatcherTimer _refreshTimer;
     private readonly DispatcherTimer _clockTimer;
@@ -50,6 +52,7 @@ public partial class MainWindow : Window
 
     private CodexUsageSnapshot? _currentSnapshot;
     private ClaudeUsageSnapshot? _claudeSnapshot;
+    private AntigravityUsageSnapshot? _antigravitySnapshot;
     private TodayTokenUsage? _todayTokenUsage;
     private AccountTokenUsage? _displayTokenUsage;
     private Exception? _codexError;
@@ -83,6 +86,7 @@ public partial class MainWindow : Window
         UpdateTrayTooltip();
         _localTokenMonitor = new LocalSessionTokenMonitor();
         _claudeMonitor = new ClaudeUsageMonitor();
+        _antigravityMonitor = new AntigravityUsageMonitor();
         _monitoringEnabled = enableMonitoring;
 
         _refreshTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -109,6 +113,7 @@ public partial class MainWindow : Window
         _client.RefreshSuggested += Client_RefreshSuggested;
         _localTokenMonitor.UsageUpdated += LocalTokenMonitor_UsageUpdated;
         _claudeMonitor.UsageUpdated += ClaudeMonitor_UsageUpdated;
+        _antigravityMonitor.UsageUpdated += AntigravityMonitor_UsageUpdated;
         _trayIcon.ShowRequested += TrayIcon_ShowRequested;
         _trayIcon.RefreshRequested += TrayIcon_RefreshRequested;
         _trayIcon.UpdateRequested += TrayIcon_UpdateRequested;
@@ -182,6 +187,7 @@ public partial class MainWindow : Window
         }
         _localTokenMonitor.Start();
         _claudeMonitor.Start();
+        _antigravityMonitor.Start();
         _refreshTimer.Start();
         _clockTimer.Start();
         _updateTimer.Start();
@@ -266,9 +272,36 @@ public partial class MainWindow : Window
         }
     }
 
+    private void AntigravityMonitor_UsageUpdated(AntigravityUsageSnapshot usage)
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(() => ApplyAntigravitySnapshot(usage)));
+    }
+
+    internal void ApplyAntigravitySnapshot(AntigravityUsageSnapshot usage)
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        _antigravitySnapshot = usage;
+        if (_activeProvider == UsageProvider.Antigravity)
+        {
+            RenderAntigravity();
+        }
+    }
+
     private async Task RefreshUsageAsync(bool userInitiated = false)
     {
         _claudeMonitor.Refresh(userInitiated);
+        _antigravityMonitor.Refresh();
         _localTokenMonitor.Refresh();
         if (_refreshInProgress || _isClosing)
         {
@@ -285,6 +318,11 @@ public partial class MainWindow : Window
         else if (_activeProvider == UsageProvider.Claude && _claudeSnapshot is null)
         {
             ConnectionText.Text = Loc.T("conn.readingClaude");
+            StatusDot.Fill = WarningBrush;
+        }
+        else if (_activeProvider == UsageProvider.Antigravity && _antigravitySnapshot is null)
+        {
+            ConnectionText.Text = Loc.T("conn.readingAntigravity");
             StatusDot.Fill = WarningBrush;
         }
 
@@ -348,13 +386,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_activeProvider == UsageProvider.Codex)
+        switch (_activeProvider)
         {
-            RenderCodex();
-        }
-        else
-        {
-            RenderClaude();
+            case UsageProvider.Claude:
+                RenderClaude();
+                break;
+            case UsageProvider.Antigravity:
+                RenderAntigravity();
+                break;
+            default:
+                RenderCodex();
+                break;
         }
 
         RenderExpandedPanel();
@@ -413,6 +455,8 @@ public partial class MainWindow : Window
 
     private void RenderCodex()
     {
+        SetLunaCardCaption(FiveHourCaption, "card.fiveHour");
+        SetLunaCardCaption(WeeklyCaption, "card.weekly");
         SetLunaCardCaption(LunaCaption, "card.lunaReserve");
         BalanceCaption.Text = Loc.T("card.balance");
         ResetCreditsCaption.Text = Loc.T("card.resetCredits");
@@ -519,6 +563,8 @@ public partial class MainWindow : Window
 
     private void RenderClaude()
     {
+        SetLunaCardCaption(FiveHourCaption, "card.fiveHour");
+        SetLunaCardCaption(WeeklyCaption, "card.weekly");
         LifetimeTokensCaption.Text = Loc.T("card.localLifetimeTokens");
 
         var snapshot = _claudeSnapshot;
@@ -596,6 +642,181 @@ public partial class MainWindow : Window
         }
 
         RenderExpandedPanel();
+    }
+
+    private void RenderAntigravity()
+    {
+        LifetimeTokensCaption.Text = Loc.T("card.localLifetimeTokens");
+
+        var snapshot = _antigravitySnapshot;
+        var models = snapshot?.Models ?? Array.Empty<AntigravityModelUsage>();
+        if (models.Count > 0)
+        {
+            SetQuotaVisibility(
+                showFiveHour: models.Count >= 1,
+                showWeekly: models.Count >= 2,
+                showLuna: models.Count >= 3);
+
+            ApplyAntigravityModelCard(
+                models[0],
+                FiveHourCaption,
+                FiveHourRemainingText,
+                FiveHourUsedText,
+                FiveHourProgress,
+                FiveHourResetText);
+
+            if (models.Count >= 2)
+            {
+                ApplyAntigravityModelCard(
+                    models[1],
+                    WeeklyCaption,
+                    WeeklyRemainingText,
+                    WeeklyUsedText,
+                    WeeklyProgress,
+                    WeeklyResetText);
+            }
+
+            if (models.Count >= 3)
+            {
+                ApplyAntigravityModelCard(
+                    models[2],
+                    LunaCaption,
+                    LunaRemainingText,
+                    LunaUsedText,
+                    LunaProgress,
+                    LunaResetText);
+            }
+        }
+        else
+        {
+            var status = snapshot?.Status;
+            SetQuotaVisibility(
+                showFiveHour: true,
+                showWeekly: status?.Weekly is not null || status?.FiveHour is null,
+                showLuna: false);
+            SetLunaCardCaption(FiveHourCaption, "card.fiveHour");
+            SetLunaCardCaption(WeeklyCaption, "card.weekly");
+            SetLunaCardCaption(LunaCaption, "card.lunaReserve");
+
+            ApplyRateWindow(
+                status?.FiveHour,
+                FiveHourRemainingText,
+                FiveHourUsedText,
+                FiveHourProgress,
+                FiveHourResetText);
+            ApplyRateWindow(
+                status?.Weekly,
+                WeeklyRemainingText,
+                WeeklyUsedText,
+                WeeklyProgress,
+                WeeklyResetText);
+            ApplyRateWindow(
+                null,
+                LunaRemainingText,
+                LunaUsedText,
+                LunaProgress,
+                LunaResetText);
+        }
+
+        BalanceCaption.Text = Loc.T("lbl.currentModel");
+        var activeModel = snapshot?.ActiveModelName;
+        if (string.IsNullOrWhiteSpace(activeModel))
+        {
+            BalanceText.FontSize = 18;
+            BalanceText.Text = "--";
+        }
+        else
+        {
+            BalanceText.FontSize = 13;
+            BalanceText.Text = activeModel;
+        }
+
+        if (snapshot?.ContextUsedPercent is { } contextPercent)
+        {
+            ResetCreditsCaption.Text = Loc.T("card.context");
+            ResetCreditsText.FontSize = 18;
+            ResetCreditsText.Text = $"{contextPercent}%";
+        }
+        else
+        {
+            ResetCreditsCaption.Text = Loc.T("card.modelCount");
+            ResetCreditsText.FontSize = 18;
+            ResetCreditsText.Text = models.Count > 0
+                ? Loc.T("unit.kinds", models.Count)
+                : "--";
+        }
+
+        var tokenStatus = snapshot switch
+        {
+            null => Loc.T("conn.readingAntigravity"),
+            { Models.Count: > 0 } => Loc.T("status.antigravityLocal", models.Count),
+            { IsAntigravityAvailable: false } => Loc.T("status.antigravityNotDetected"),
+            _ => Loc.T("status.antigravityNoHistory"),
+        };
+        ApplyTokenUsageDisplay(snapshot?.TokenUsage, tokenStatus, tokenStatus);
+
+        if (snapshot is { IsAntigravityAvailable: true })
+        {
+            var observedUsage = new[]
+                {
+                    snapshot.Status?.FiveHour?.UsedPercent,
+                    snapshot.Status?.Weekly?.UsedPercent,
+                }
+                .Concat(models.Select(model => model.QuotaWindow?.UsedPercent))
+                .Where(value => value.HasValue)
+                .Select(value => value!.Value)
+                .DefaultIfEmpty(0)
+                .Max();
+            StatusDot.Fill = GetQuotaBrush(100 - observedUsage);
+            ConnectionText.Text = Loc.T("conn.antigravityLive");
+            UpdatedText.Text = Loc.T("time.updated", TimeStamp(snapshot.FetchedAt));
+        }
+        else if (snapshot is { IsAntigravityAvailable: false })
+        {
+            StatusDot.Fill = WarningBrush;
+            ConnectionText.Text = Loc.T("status.antigravityNotDetected");
+            UpdatedText.Text = Loc.T("time.check", TimeStamp(snapshot.FetchedAt));
+        }
+        else
+        {
+            StatusDot.Fill = WarningBrush;
+            ConnectionText.Text = Loc.T("conn.readingAntigravity");
+            UpdatedText.Text = string.Empty;
+        }
+
+        RenderExpandedPanel();
+    }
+
+    private void ApplyAntigravityModelCard(
+        AntigravityModelUsage model,
+        TextBlock caption,
+        TextBlock remainingText,
+        TextBlock usedText,
+        ProgressBar progress,
+        TextBlock resetText)
+    {
+        SetCardCaptionText(caption, model.DisplayName);
+        if (model.QuotaWindow is { } window)
+        {
+            ApplyRateWindow(window, remainingText, usedText, progress, resetText);
+            return;
+        }
+
+        remainingText.Opacity = 1d;
+        usedText.Opacity = 1d;
+        progress.Opacity = 1d;
+        resetText.Opacity = 1d;
+        remainingText.Text = TokenFormatter.Format(model.TotalTokens);
+        usedText.Text = Loc.T("card.modelShare", model.SharePercent);
+        progress.Value = model.SharePercent;
+        progress.Foreground = AntigravityBarBrush;
+        resetText.Text = Loc.T("unit.times", model.TurnCount);
+    }
+
+    private static void SetCardCaptionText(TextBlock caption, string text)
+    {
+        caption.Text = text;
+        System.Windows.Automation.AutomationProperties.SetName(caption, text);
     }
 
     /// <summary>Formats the local clock time; a fixed 24-hour format reads the same in every language.</summary>
@@ -819,7 +1040,7 @@ public partial class MainWindow : Window
         {
             var bars = BuildHistoryBars(
                 tokenUsage,
-                _activeProvider == UsageProvider.Claude ? "#D9906E" : "#7EE787");
+                GetProviderBarColor());
             LatestTokensCaption.Text = Loc.T("card.dayUsage", Loc.MonthDay(latest.Date));
             LatestTokensText.Text = TokenFormatter.Format(latest.Tokens);
             SevenDayTokensText.Text = TokenFormatter.Format(bars.Sum(item => item.Tokens));
@@ -929,6 +1150,34 @@ public partial class MainWindow : Window
 
     private void UpdateResetLabels()
     {
+        if (_activeProvider == UsageProvider.Antigravity)
+        {
+            var models = _antigravitySnapshot?.Models ?? Array.Empty<AntigravityModelUsage>();
+            if (models.Count > 0)
+            {
+                if (models[0].QuotaWindow is { } firstWindow)
+                {
+                    SetCompactResetLabel(FiveHourResetText, firstWindow);
+                }
+                if (models.Count >= 2 && models[1].QuotaWindow is { } secondWindow)
+                {
+                    SetCompactResetLabel(WeeklyResetText, secondWindow);
+                }
+                if (models.Count >= 3 && models[2].QuotaWindow is { } thirdWindow)
+                {
+                    SetCompactResetLabel(LunaResetText, thirdWindow);
+                }
+            }
+            else
+            {
+                SetCompactResetLabel(FiveHourResetText, _antigravitySnapshot?.Status?.FiveHour);
+                SetCompactResetLabel(WeeklyResetText, _antigravitySnapshot?.Status?.Weekly);
+                SetCompactResetLabel(LunaResetText, null);
+            }
+
+            return;
+        }
+
         RateLimitWindow? fiveHour;
         RateLimitWindow? weekly;
         RateLimitWindow? lunaReserve;
@@ -1357,9 +1606,12 @@ public partial class MainWindow : Window
             return;
         }
 
-        _activeProvider = provider.Equals("Claude", StringComparison.OrdinalIgnoreCase)
-            ? UsageProvider.Claude
-            : UsageProvider.Codex;
+        _activeProvider = provider switch
+        {
+            _ when provider.Equals("Claude", StringComparison.OrdinalIgnoreCase) => UsageProvider.Claude,
+            _ when provider.Equals("Antigravity", StringComparison.OrdinalIgnoreCase) => UsageProvider.Antigravity,
+            _ => UsageProvider.Codex,
+        };
         RenderActiveProvider();
     }
 
@@ -1454,11 +1706,14 @@ public partial class MainWindow : Window
         switch (_expandedPanel)
         {
             case ExpandedPanel.Details:
-                DetailsItemsControl.ItemsSource = _activeProvider == UsageProvider.Codex
-                    ? UsageDetailBuilder.BuildCodex(
+                DetailsItemsControl.ItemsSource = _activeProvider switch
+                {
+                    UsageProvider.Claude => UsageDetailBuilder.BuildClaude(_claudeSnapshot),
+                    UsageProvider.Antigravity => UsageDetailBuilder.BuildAntigravity(_antigravitySnapshot),
+                    _ => UsageDetailBuilder.BuildCodex(
                         _currentSnapshot,
-                        _codexError is null ? null : GetFriendlyError(_codexError))
-                    : UsageDetailBuilder.BuildClaude(_claudeSnapshot);
+                        _codexError is null ? null : GetFriendlyError(_codexError)),
+                };
                 break;
             case ExpandedPanel.History:
                 RenderHistoryList();
@@ -1468,7 +1723,12 @@ public partial class MainWindow : Window
 
     private void RenderHistoryList()
     {
-        var providerName = _activeProvider == UsageProvider.Claude ? "Claude" : "Codex";
+        var providerName = _activeProvider switch
+        {
+            UsageProvider.Claude => "Claude",
+            UsageProvider.Antigravity => "Antigravity",
+            _ => "Codex",
+        };
         HistoryTitleText.Text = Loc.T("history.title", providerName);
 
         if (_displayTokenUsage is not { } usage || usage.DailyUsage.Count == 0)
@@ -1482,7 +1742,7 @@ public partial class MainWindow : Window
             "history.subtitle",
             usage.DailyUsage.Count,
             usage.LatestDay!.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-        var color = _activeProvider == UsageProvider.Claude ? "#D9906E" : "#7EE787";
+        var color = GetProviderBarColor();
         var maximum = Math.Max(1L, usage.DailyUsage.Max(item => item.Tokens));
 
         // Newest first: the recent days are what the user came to look at.
@@ -1808,6 +2068,7 @@ public partial class MainWindow : Window
         _client.RefreshSuggested -= Client_RefreshSuggested;
         _localTokenMonitor.UsageUpdated -= LocalTokenMonitor_UsageUpdated;
         _claudeMonitor.UsageUpdated -= ClaudeMonitor_UsageUpdated;
+        _antigravityMonitor.UsageUpdated -= AntigravityMonitor_UsageUpdated;
         _trayIcon.ShowRequested -= TrayIcon_ShowRequested;
         _trayIcon.RefreshRequested -= TrayIcon_RefreshRequested;
         _trayIcon.UpdateRequested -= TrayIcon_UpdateRequested;
@@ -1817,11 +2078,19 @@ public partial class MainWindow : Window
         _client.DisposeAsync().AsTask().GetAwaiter().GetResult();
         _localTokenMonitor.Dispose();
         _claudeMonitor.Dispose();
+        _antigravityMonitor.Dispose();
         _trayIcon.Dispose();
         _updateService.Dispose();
         _lifetimeCancellation.Dispose();
         base.OnClosed(e);
     }
+
+    private string GetProviderBarColor() => _activeProvider switch
+    {
+        UsageProvider.Claude => "#D9906E",
+        UsageProvider.Antigravity => "#58A6FF",
+        _ => "#7EE787",
+    };
 
     private static Brush CreateBrush(byte red, byte green, byte blue)
     {
@@ -1852,6 +2121,7 @@ public partial class MainWindow : Window
     {
         Codex,
         Claude,
+        Antigravity,
     }
 
     private enum ExpandedPanel

@@ -6,11 +6,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
 
-A small always-on-top desktop widget for Windows that monitors your **Codex** and
-**Claude Code** usage side by side — rate-limit windows, credit balance, token history —
-straight from each provider's own data, whether the CLI or desktop app is running or not.
+A small always-on-top desktop widget for Windows that monitors your **Codex**,
+**Claude Code**, and **Antigravity** usage side by side — rate-limit windows, per-model usage, credit balance, token history —
+straight from each provider's own data and local transcripts, whether the CLI or desktop app is running or not.
 
-> Not affiliated with OpenAI or Anthropic. It only reads the local credentials and session
+> Not affiliated with OpenAI, Anthropic, or Google. It only reads the local credentials and session
 > files those tools already write on your own machine.
 
 ## Download
@@ -22,7 +22,8 @@ system tray after opening the main window. Launching it again restores the exist
 
 ## Features
 
-- **Two providers, one window.** Toggle between Codex and Claude with the tabs at the bottom.
+- **Three providers, one window.** Toggle between Codex, Claude, and Antigravity with the tabs at the bottom.
+- **Antigravity per-model usage monitoring.** Automatically scans `~/.gemini/antigravity/brain/*/.system_generated/logs/transcript.jsonl` (plus `antigravity-ide`, `antigravity-cli`, and `ANTIGRAVITY_HOME`) to track per-model token consumption, share percentage, turn count, input/cache/output breakdown, active model, and context occupancy, with optional `%LOCALAPPDATA%\AiTokenMonitor\antigravity-status.json` hook/status bridge support.
 - **Real quota, not guesses.** Reads the same official surfaces the CLIs use:
   - Claude: `GET https://api.anthropic.com/api/oauth/usage` (the source behind `/usage`). The
     optional `seven_day_overage_included`, `model_scoped[]`, `extra_usage`, and `spend` fields are

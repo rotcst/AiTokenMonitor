@@ -16,6 +16,7 @@ internal static class Strings
         // Provider tabs / automation
         ["tab.codex"] = ["切换到 Codex 用量", "Switch to Codex usage", "Codex 사용량으로 전환"],
         ["tab.claude"] = ["切换到 Claude 用量", "Switch to Claude usage", "Claude 사용량으로 전환"],
+        ["tab.antigravity"] = ["切换到 Antigravity 用量", "Switch to Antigravity usage", "Antigravity 사용량으로 전환"],
         ["header.toggleDetails"] = ["展开或收起详情", "Toggle details", "세부정보 펼치기/접기"],
         ["header.toggleHistory"] = ["展开或收起逐日 Token 历史", "Toggle daily token history", "일별 토큰 기록 펼치기/접기"],
         ["header.refresh"] = ["立即刷新", "Refresh now", "지금 새로고침"],
@@ -34,6 +35,9 @@ internal static class Strings
         ["conn.claudeUpdateFailed"] = ["Claude 更新暂时失败", "Claude update failed", "Claude 업데이트 실패"],
         ["conn.readingClaudeQuota"] = ["正在读取 Claude 额度", "Reading Claude quota", "Claude 한도 읽는 중"],
         ["conn.claudeQuotaFailed"] = ["Claude 额度读取失败", "Claude quota read failed", "Claude 한도 읽기 실패"],
+        ["conn.readingAntigravity"] = ["正在读取 Antigravity", "Reading Antigravity", "Antigravity 읽는 중"],
+        ["conn.antigravityLive"] = ["ANTIGRAVITY实时监控中", "ANTIGRAVITY live monitoring", "ANTIGRAVITY 실시간 모니터링"],
+        ["conn.antigravityLocal"] = ["Antigravity 本机统计", "Antigravity local stats", "Antigravity 로컬 통계"],
         ["conn.connectFailed"] = ["连接失败", "Connection failed", "연결 실패"],
         ["conn.updateFailed"] = ["更新暂时失败", "Update failed", "업데이트 실패"],
         ["conn.stale"] = ["更新失败 · 显示旧数据", "Update failed · showing stale data", "업데이트 실패 · 이전 데이터 표시 중"],
@@ -70,6 +74,9 @@ internal static class Strings
         ["card.enabled"] = ["已开通", "Enabled", "사용 중"],
         ["card.context"] = ["上下文占用", "Context used", "컨텍스트 사용"],
         ["card.plan"] = ["订阅计划", "Plan", "요금제"],
+        ["card.modelShare"] = ["占比 {0}%", "{0}% share", "비율 {0}%"],
+        ["card.modelCount"] = ["活跃模型", "Models used", "사용 모델"],
+        ["card.noModelData"] = ["暂无模型记录", "No model records", "모델 기록 없음"],
         ["credit.unlimited"] = ["不限", "Unlimited", "무제한"],
         ["credit.available"] = ["可用", "Available", "사용 가능"],
 
@@ -88,6 +95,9 @@ internal static class Strings
         ["status.claudeStale"] = ["额度暂未刷新 · {0}", "Quota not refreshed · {0}", "한도 미갱신 · {0}"],
         ["status.claudeOfficial"] = ["额度来自 Claude 官方接口 · Token 为本机统计", "Quota from Claude's API · tokens counted locally", "한도는 Claude 공식 API · 토큰은 로컬 집계"],
         ["status.claudeNotDetected"] = ["未检测到 Claude · 安装并登录 Claude Code 后可用", "Claude not found · install and sign in to Claude Code", "Claude 없음 · Claude Code 설치·로그인 필요"],
+        ["status.antigravityLocal"] = ["各模型与 Token 来自 Antigravity 本机会话记录", "Per-model & token stats from local Antigravity sessions", "모델별 및 토큰 통계는 로컬 Antigravity 세션 기준"],
+        ["status.antigravityBridge"] = ["额度与模型来自状态桥接 · Token 为本机统计", "Quota & model from bridge · tokens counted locally", "한도·모델은 브리지 · 토큰은 로컬 집계"],
+        ["status.antigravityNotDetected"] = ["未检测到 Antigravity 会话记录", "No Antigravity session logs found", "Antigravity 세션 기록 없음"],
         ["retry.minutes"] = ["{0} 分钟", "{0} min", "{0}분"],
         ["retry.seconds"] = ["{0} 秒", "{0} sec", "{0}초"],
 
@@ -178,6 +188,7 @@ internal static class Strings
         ["sec.wallet"] = ["点数余额", "Credit balance", "크레딧 잔액"],
         ["sec.usageCredit"] = ["用量额度（本期消耗）", "Usage credits (this period)", "사용 크레딧 (이번 기간)"],
         ["sec.session"] = ["当前会话", "Current session", "현재 세션"],
+        ["sec.modelUsage"] = ["模型用量", "Per-model usage", "모델별 사용량"],
 
         // Detail-panel labels
         ["lbl.status"] = ["状态", "Status", "상태"],
@@ -226,6 +237,8 @@ internal static class Strings
         ["lbl.effort"] = ["推理强度", "Reasoning effort", "추론 강도"],
         ["lbl.ccVersion"] = ["Claude Code 版本", "Claude Code version", "Claude Code 버전"],
         ["lbl.lastTurn"] = ["最近一轮", "Last turn", "최근 턴"],
+        ["lbl.totalTurns"] = ["调用轮次", "Total turns", "총 호출 턴"],
+        ["lbl.conversationId"] = ["会话 ID", "Conversation ID", "세션 ID"],
 
         // Detail-panel values
         ["val.yes"] = ["是", "Yes", "예"],
@@ -239,7 +252,10 @@ internal static class Strings
         ["val.enabledShort"] = ["已开通", "Enabled", "사용 중"],
         ["val.notEnabledShort"] = ["未开通", "Not enabled", "미사용"],
         ["val.statsScopeClaude"] = ["仅本机会话记录，含缓存读写", "Local session logs only, incl. cache I/O", "로컬 세션 기록만, 캐시 입출력 포함"],
+        ["val.statsScopeAntigravity"] = ["本机 brain 会话记录，含输入、缓存读取与输出", "Local brain transcripts, incl. input, cache read & output", "로컬 brain 세션 기록 (입력·캐시 읽기·출력 포함)"],
         ["val.noRecentSession"] = ["近 30 分钟没有本机会话活动", "No local session in the last 30 min", "최근 30분간 로컬 세션 없음"],
+        ["model.usageRow"] = ["{0} · 占比 {1}% · {2}", "{0} · {1}% share · {2}", "{0} · 비율 {1}% · {2}"],
+        ["model.ioBreakdown"] = ["输入 {0} · 缓存 {1} · 输出 {2}", "in {0} · cache {1} · out {2}", "입력 {0} · 캐시 {1} · 출력 {2}"],
         ["detail.reading"] = ["正在读取", "Reading", "읽는 중"],
         ["detail.normal"] = ["正常", "OK", "정상"],
         ["detail.noData"] = ["暂无可显示的数据", "No data to show", "표시할 데이터 없음"],

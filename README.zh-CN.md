@@ -6,10 +6,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
 
-一个 Windows 桌面悬浮小窗，在同一界面并排监控 **Codex** 与 **Claude Code** 的用量——额度窗口、
-充值余额、Token 历史——数据直接来自各自官方来源，**不论 CLI 或桌面端是否在运行**都能读到。
+一个 Windows 桌面悬浮小窗，在同一界面并排监控 **Codex**、**Claude Code** 与 **Antigravity** 的用量——额度窗口、
+各个模型用量、充值余额、Token 历史——数据直接来自各自官方来源与本机会话日志，**不论 CLI 或桌面端是否在运行**都能读到。
 
-> 与 OpenAI、Anthropic 无关联。只读取这两个工具在你本机已经写好的凭据和会话文件。
+> 与 OpenAI、Anthropic、Google 无关联。只读取这些工具在你本机已经写好的凭据和会话文件。
 
 ## 下载
 
@@ -19,7 +19,8 @@
 
 ## 功能
 
-- **两个 Provider，一个窗口**：底部标签在 Codex / Claude 之间切换。
+- **三个 Provider，一个窗口**：底部标签在 Codex / Claude / Antigravity 之间切换。
+- **Antigravity 多模型用量监控**：自动扫描 `~/.gemini/antigravity/brain/*/.system_generated/logs/transcript.jsonl`（同时支持 `antigravity-ide`、`antigravity-cli` 与 `ANTIGRAVITY_HOME`），按模型（如 Gemini 4 Argon、Gemini 2.5 Pro、Claude Sonnet 等）统计累计 Token、占比、调用次数、输入/缓存/输出明细，以及当前会话活跃模型与上下文占用；同时支持 `%LOCALAPPDATA%\AiTokenMonitor\antigravity-status.json` 状态桥接。
 - **真实额度，不靠估算**：读取与 CLI 相同的官方数据面——
   - Claude：`GET https://api.anthropic.com/api/oauth/usage`（即 `/usage` 背后的数据源）。接口新增的
     `seven_day_overage_included`、`model_scoped[]`、`extra_usage`、`spend` 字段会在返回时解析。

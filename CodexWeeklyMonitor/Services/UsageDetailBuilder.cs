@@ -203,6 +203,104 @@ public static class UsageDetailBuilder
         return sections.Count == 0 ? Single("Claude", Loc.T("lbl.status"), Loc.T("detail.noData")) : sections;
     }
 
+    public static IReadOnlyList<UsageDetailSection> BuildAntigravity(AntigravityUsageSnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            return Single("Antigravity", Loc.T("lbl.status"), Loc.T("detail.reading"));
+        }
+
+        var sections = new List<UsageDetailSection>();
+
+        var session = new List<UsageDetailItem>();
+        Add(session, Loc.T("lbl.currentModel"), snapshot.ActiveModelName);
+        Add(session, Loc.T("lbl.plan"), FormatPlan(snapshot.Status?.PlanType));
+        if (snapshot.Session is { } live)
+        {
+            Add(
+                session,
+                Loc.T("lbl.context"),
+                $"{live.ContextUsedPercent}% · {live.ContextTokens:N0} / {live.ContextWindow:N0}");
+            Add(session, Loc.T("lbl.conversationId"), live.ConversationId);
+            Add(session, Loc.T("lbl.lastTurn"), Timestamp(live.ObservedAt));
+            Add(
+                session,
+                Loc.T("lbl.source"),
+                snapshot.Status is not null ? Loc.T("source.statusBridge") : Loc.T("source.localSession"));
+        }
+        else if (snapshot.Status?.ContextUsedPercent is { } context)
+        {
+            Add(session, Loc.T("lbl.context"), $"{context}%");
+            Add(session, Loc.T("lbl.conversationId"), snapshot.Status.ConversationId);
+            Add(session, Loc.T("lbl.source"), Loc.T("source.statusBridge"));
+        }
+        else
+        {
+            Add(session, Loc.T("lbl.status"), Loc.T("val.noRecentSession"));
+        }
+
+        Add(session, Loc.T("lbl.updateTime"), Timestamp(snapshot.FetchedAt));
+        AddSection(sections, Loc.T("sec.session"), session);
+
+        if (snapshot.Status is { } status)
+        {
+            var quota = new List<UsageDetailItem>();
+            AddWindow(quota, Loc.T("card.fiveHour"), status.FiveHour);
+            AddWindow(quota, Loc.T("card.weekly"), status.Weekly);
+            if (status.ModelQuotas is { Count: > 0 })
+            {
+                foreach (var modelQuota in status.ModelQuotas)
+                {
+                    AddWindow(
+                        quota,
+                        modelQuota.DisplayName,
+                        new RateLimitWindow(modelQuota.UsedPercent, modelQuota.ResetsAt, 10_080));
+                }
+            }
+
+            AddSection(sections, Loc.T("sec.quota"), quota);
+        }
+
+        var modelItems = new List<UsageDetailItem>();
+        foreach (var model in snapshot.Models)
+        {
+            var summary = Loc.T(
+                "model.usageRow",
+                FormatExactTokens(model.TotalTokens) ?? "0",
+                model.SharePercent,
+                Loc.T("unit.times", model.TurnCount));
+            var ioDetail = Loc.T(
+                "model.ioBreakdown",
+                TokenFormatter.Format(model.InputTokens),
+                TokenFormatter.Format(model.CacheReadTokens),
+                TokenFormatter.Format(model.OutputTokens));
+            var quotaNote = model.QuotaWindow is { } window
+                ? $" · {Loc.T("window.usedRemaining", window.UsedPercent, window.RemainingPercent)}"
+                : string.Empty;
+            Add(modelItems, model.DisplayName, $"{summary} ({ioDetail}){quotaNote}");
+        }
+
+        AddSection(sections, Loc.T("sec.modelUsage"), modelItems);
+
+        var usage = new List<UsageDetailItem>();
+        if (snapshot.TokenUsage is { } tokenUsage)
+        {
+            Add(usage, Loc.T("lbl.localLifetimeTokens"), FormatExactTokens(tokenUsage.LifetimeTokens));
+            Add(usage, Loc.T("lbl.peakDaily"), FormatExactTokens(tokenUsage.PeakDailyTokens));
+            Add(usage, Loc.T("card.modelCount"), Loc.T("unit.kinds", snapshot.Models.Count));
+            Add(usage, Loc.T("lbl.totalThreads"), Loc.T("unit.count", snapshot.TotalConversations));
+            Add(usage, Loc.T("lbl.totalTurns"), Loc.T("unit.times", snapshot.TotalTurns));
+            Add(usage, Loc.T("lbl.currentStreak"), FormatDays(tokenUsage.CurrentStreakDays));
+            Add(usage, Loc.T("lbl.longestStreak"), FormatDays(tokenUsage.LongestStreakDays));
+            Add(usage, Loc.T("lbl.historyDays"), Loc.T("unit.days", tokenUsage.DailyUsage.Count));
+            Add(usage, Loc.T("lbl.statsScope"), Loc.T("val.statsScopeAntigravity"));
+        }
+
+        AddSection(sections, Loc.T("sec.usageStats"), usage);
+
+        return sections.Count == 0 ? Single("Antigravity", Loc.T("lbl.status"), Loc.T("detail.noData")) : sections;
+    }
+
     private static string Timestamp(DateTimeOffset value) =>
         value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
 

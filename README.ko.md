@@ -6,11 +6,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)
 
-**Codex** 와 **Claude Code** 의 사용량을 한 화면에서 나란히 보여 주는 Windows 데스크톱 위젯입니다.
-한도 창, 크레딧 잔액, 토큰 기록을 각 서비스의 공식 데이터에서 직접 읽으며, **CLI나 데스크톱 앱이
+**Codex**, **Claude Code**, **Antigravity** 의 사용량을 한 화면에서 나란히 보여 주는 Windows 데스크톱 위젯입니다.
+한도 창, 모델별 사용량, 크레딧 잔액, 토큰 기록을 각 서비스의 공식 데이터와 로컬 기록에서 직접 읽으며, **CLI나 데스크톱 앱이
 실행 중이 아니어도** 동작합니다.
 
-> OpenAI · Anthropic 과 무관합니다. 이 도구들이 사용자 PC에 이미 기록해 둔 자격 증명과 세션 파일만
+> OpenAI · Anthropic · Google 과 무관합니다. 이 도구들이 사용자 PC에 이미 기록해 둔 자격 증명과 세션 파일만
 > 읽습니다.
 
 ## 다운로드
@@ -21,7 +21,8 @@
 
 ## 기능
 
-- **두 서비스, 한 창**: 하단 탭으로 Codex / Claude 전환.
+- **세 서비스, 한 창**: 하단 탭으로 Codex / Claude / Antigravity 전환.
+- **Antigravity 모델별 사용량 모니터링**: `~/.gemini/antigravity/brain/*/.system_generated/logs/transcript.jsonl` (`antigravity-ide`, `antigravity-cli`, `ANTIGRAVITY_HOME` 포함)을 자동으로 스캔하여 모델별 누적 토큰, 비중, 호출 횟수, 입력/캐시/출력 내역, 현재 활성 모델 및 컨텍스트 점유율을 집계하며 `%LOCALAPPDATA%\AiTokenMonitor\antigravity-status.json` 상태 브리지도 지원합니다.
 - **추정이 아닌 실제 한도**: CLI가 쓰는 것과 같은 공식 데이터 경로를 읽습니다.
   - Claude: `GET https://api.anthropic.com/api/oauth/usage` (`/usage` 의 원본). 응답에 포함될 수 있는
     `seven_day_overage_included`, `model_scoped[]`, `extra_usage`, `spend` 필드도 읽습니다. Fable 5.1은

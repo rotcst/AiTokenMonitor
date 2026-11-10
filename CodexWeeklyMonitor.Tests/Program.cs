@@ -3390,6 +3390,242 @@ Run("更新下载在收到响应头后停滞仍会超时并清理临时文件", 
     }
 });
 
+Run("Antigravity：解析 transcript.jsonl 的模型切换、按模型统计与去重", () =>
+{
+    var lines = new[]
+    {
+        """{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-11-10T10:00:00Z","content":"你好\n\n<USER_SETTINGS_CHANGE>\nThe user changed setting `Model Selection` from None to Gemini 4 Argon (High).\n</USER_SETTINGS_CHANGE>\n"}""",
+        """{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-11-10T10:00:10Z","input_tokens":1000,"cache_read_tokens":2000,"output_tokens":500,"thinking_Duration":"2s"}""",
+        // GENERIC tool result containing fake settings text must be ignored
+        """{"step_index":2,"source":"SYSTEM","type":"GENERIC","status":"DONE","created_at":"2026-11-10T10:00:15Z","content":"<USER_SETTINGS_CHANGE>\nThe user changed setting `Model Selection` from Gemini 4 Argon (High) to FakeModel.\n</USER_SETTINGS_CHANGE>","input_tokens":99999}""",
+        // Duplicate step_index=1 should be deduplicated
+        """{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-11-10T10:00:10Z","input_tokens":1000,"cache_read_tokens":2000,"output_tokens":500}""",
+        """{"step_index":3,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-11-10T10:05:00Z","content":"换模型\n\n<USER_SETTINGS_CHANGE>\nThe user changed setting `Model Selection` from Gemini 4 Argon (High) to Claude Sonnet 4.5.\n</USER_SETTINGS_CHANGE>\n"}""",
+        """{"step_index":4,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-11-10T10:05:12Z","input_tokens":500,"cache_read_tokens":500,"output_tokens":500}""",
+    };
+
+    var now = new DateTimeOffset(2026, 11, 10, 12, 0, 0, TimeSpan.Zero);
+    var records = AntigravityTranscriptParser.ParseText(
+        string.Join('\n', lines),
+        "conv-1",
+        now,
+        out var sessionState);
+
+    Equal("Claude Sonnet 4.5", sessionState?.DisplayModelName);
+    Equal(2, records.Count);
+
+    var models = AntigravityTranscriptParser.BuildModelUsage(
+        records,
+        DateOnly.FromDateTime(now.LocalDateTime),
+        null);
+    Equal(2, models.Count);
+    Equal("Gemini 4 Argon (High)", models[0].DisplayName);
+    Equal(3500L, models[0].TotalTokens);
+    Equal(1000L, models[0].InputTokens);
+    Equal(2000L, models[0].CacheReadTokens);
+    Equal(500L, models[0].OutputTokens);
+    Equal(1, models[0].TurnCount);
+    Equal(70, models[0].SharePercent);
+
+    Equal("Claude Sonnet 4.5", models[1].DisplayName);
+    Equal(1500L, models[1].TotalTokens);
+    Equal(30, models[1].SharePercent);
+
+    var accountUsage = AntigravityTranscriptParser.BuildAccountUsage(records, now);
+    Equal(5000L, accountUsage?.LifetimeTokens);
+});
+
+Run("Antigravity：监控器只读取标准 transcript.jsonl 并合并状态桥接", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), "AiTokenMonitor-Antigravity-" + Guid.NewGuid().ToString("N"));
+    var brainDir = Path.Combine(root, "brain");
+    var logsDir = Path.Combine(brainDir, "conv-abc", ".system_generated", "logs");
+    var chunksDir = Path.Combine(logsDir, "chunks", "transcript");
+    var bridgeDir = Path.Combine(root, "bridge");
+    Directory.CreateDirectory(chunksDir);
+    Directory.CreateDirectory(bridgeDir);
+    var statusPath = Path.Combine(bridgeDir, "antigravity-status.json");
+
+    try
+    {
+        File.WriteAllLines(
+            Path.Combine(logsDir, "transcript.jsonl"),
+            [
+                """{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-11-10T10:00:00Z","content":"<USER_SETTINGS_CHANGE>\nThe user changed setting `Model Selection` from None to Gemini 4 Argon (High).\n</USER_SETTINGS_CHANGE>"}""",
+                """{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-11-10T10:00:05Z","input_tokens":4000,"cache_read_tokens":6000,"output_tokens":2000}""",
+            ]);
+        // Must be ignored so tokens are not double-counted
+        File.WriteAllLines(
+            Path.Combine(logsDir, "transcript_full.jsonl"),
+            [
+                """{"step_index":99,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-11-10T10:00:05Z","input_tokens":900000,"cache_read_tokens":0,"output_tokens":0}""",
+            ]);
+        File.WriteAllLines(
+            Path.Combine(chunksDir, "chunk-00001.jsonl"),
+            [
+                """{"step_index":98,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-11-10T10:00:05Z","input_tokens":800000,"cache_read_tokens":0,"output_tokens":0}""",
+            ]);
+        File.WriteAllText(
+            statusPath,
+            """
+            {
+              "plan_type": "Pro",
+              "rate_limits": {
+                "five_hour": { "used_percentage": 18, "resets_at": 1785280637 },
+                "seven_day": { "used_percentage": 35, "resets_at": 1785885437 }
+              },
+              "model_scoped": [
+                {
+                  "key": "gemini_4_argon",
+                  "model": "Gemini 4 Argon (High)",
+                  "display_name": "Gemini 4 Argon (High)",
+                  "used_percentage": 22,
+                  "resets_at": 1785885437
+                }
+              ]
+            }
+            """);
+
+        AntigravityUsageSnapshot? captured = null;
+        using var monitor = new AntigravityUsageMonitor(root, bridgeDir);
+        monitor.UsageUpdated += snapshot => captured = snapshot;
+        monitor.Refresh();
+
+        if (captured is null)
+        {
+            throw new Exception("AntigravityUsageMonitor 没有发布快照。");
+        }
+
+        Equal(true, captured.IsAntigravityAvailable);
+        Equal(true, captured.IsBridgeConfigured);
+        Equal(1, captured.TotalConversations);
+        Equal(1, captured.TotalTurns);
+        Equal(12_000L, captured.TokenUsage?.LifetimeTokens);
+        Equal(1, captured.Models.Count);
+        Equal("Gemini 4 Argon (High)", captured.Models[0].DisplayName);
+        Equal(22, captured.Models[0].QuotaWindow?.UsedPercent);
+        Equal(78, captured.Models[0].QuotaWindow?.RemainingPercent);
+        Equal("Gemini 4 Argon (High)", captured.ActiveModelName);
+    }
+    finally
+    {
+        if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+    }
+});
+
+RunSta("Antigravity：主窗口切换到 Antigravity 标签页并渲染多模型卡片与详情", () =>
+{
+    Loc.SetLanguage(AppLanguage.Chinese);
+    using var trayIcon = new FakeTrayIconService();
+    var mainWindow = new MainWindow(trayIcon, enableMonitoring: false);
+    mainWindow.Width = 340;
+    mainWindow.Height = 470;
+    mainWindow.Show();
+    try
+    {
+        mainWindow.UpdateLayout();
+        var codexTab = (RadioButton)mainWindow.FindName("CodexProviderTab");
+        var claudeTab = (RadioButton)mainWindow.FindName("ClaudeProviderTab");
+        var antigravityTab = (RadioButton)mainWindow.FindName("AntigravityProviderTab");
+
+        var now = DateTimeOffset.Now;
+        var snapshot = new AntigravityUsageSnapshot(
+            Models:
+            [
+                new AntigravityModelUsage(
+                    "Gemini 4 Argon (High)",
+                    "Gemini 4 Argon (High)",
+                    TotalTokens: 1_500_000,
+                    InputTokens: 200_000,
+                    CacheReadTokens: 1_200_000,
+                    OutputTokens: 100_000,
+                    TodayTokens: 500_000,
+                    SevenDayTokens: 1_500_000,
+                    TurnCount: 18,
+                    SharePercent: 75,
+                    LastUsedAt: now),
+                new AntigravityModelUsage(
+                    "Claude Sonnet 4.5",
+                    "Claude Sonnet 4.5",
+                    TotalTokens: 500_000,
+                    InputTokens: 100_000,
+                    CacheReadTokens: 350_000,
+                    OutputTokens: 50_000,
+                    TodayTokens: 200_000,
+                    SevenDayTokens: 500_000,
+                    TurnCount: 6,
+                    SharePercent: 25,
+                    LastUsedAt: now.AddMinutes(-10)),
+            ],
+            TokenUsage: new AccountTokenUsage(
+                LifetimeTokens: 2_000_000,
+                PeakDailyTokens: 1_300_000,
+                LongestRunningTurnSeconds: null,
+                CurrentStreakDays: 2,
+                LongestStreakDays: 2,
+                DailyUsage:
+                [
+                    new DailyTokenUsage(DateOnly.FromDateTime(now.AddDays(-1).DateTime), 1_300_000),
+                    new DailyTokenUsage(DateOnly.FromDateTime(now.DateTime), 700_000),
+                ],
+                FetchedAt: now),
+            Session: new AntigravitySessionState(
+                ConversationId: "d6f43f6e-de0b-4353-baa2-c8948fdfb5e9",
+                ModelName: "Gemini 4 Argon (High)",
+                ContextTokens: 240_000,
+                OutputTokens: 8_000,
+                TurnCount: 12,
+                ObservedAt: now),
+            Status: null,
+            TotalConversations: 3,
+            TotalTurns: 24,
+            IsAntigravityAvailable: true,
+            IsBridgeConfigured: false,
+            FetchedAt: now);
+
+        mainWindow.ApplyAntigravitySnapshot(snapshot);
+        antigravityTab.IsChecked = true;
+        mainWindow.UpdateLayout();
+
+        Equal("ANTIGRAVITY实时监控中", ((TextBlock)mainWindow.FindName("ConnectionText")).Text);
+        Equal("Gemini 4 Argon (High)", ((TextBlock)mainWindow.FindName("FiveHourCaption")).Text);
+        Equal("150万", ((TextBlock)mainWindow.FindName("FiveHourRemainingText")).Text);
+        Equal("占比 75%", ((TextBlock)mainWindow.FindName("FiveHourUsedText")).Text);
+        Equal("18 次", ((TextBlock)mainWindow.FindName("FiveHourResetText")).Text);
+
+        Equal("Claude Sonnet 4.5", ((TextBlock)mainWindow.FindName("WeeklyCaption")).Text);
+        Equal("50万", ((TextBlock)mainWindow.FindName("WeeklyRemainingText")).Text);
+        Equal("占比 25%", ((TextBlock)mainWindow.FindName("WeeklyUsedText")).Text);
+        Equal("6 次", ((TextBlock)mainWindow.FindName("WeeklyResetText")).Text);
+
+        Equal(Visibility.Collapsed, ((Border)mainWindow.FindName("LunaQuotaCard")).Visibility);
+
+        Equal("当前模型", ((TextBlock)mainWindow.FindName("BalanceCaption")).Text);
+        Equal("Gemini 4 Argon (High)", ((TextBlock)mainWindow.FindName("BalanceText")).Text);
+        Equal("上下文占用", ((TextBlock)mainWindow.FindName("ResetCreditsCaption")).Text);
+        Equal("24%", ((TextBlock)mainWindow.FindName("ResetCreditsText")).Text);
+        Equal("200万", ((TextBlock)mainWindow.FindName("LifetimeTokensText")).Text);
+
+        var sections = UsageDetailBuilder.BuildAntigravity(snapshot);
+        Equal(true, sections.Any(section => section.Title == "模型用量" && section.Items.Count == 2));
+
+        // Switching back to Codex / Claude restores standard 5-hour and weekly card titles
+        codexTab.IsChecked = true;
+        mainWindow.UpdateLayout();
+        Equal("5 小时额度", ((TextBlock)mainWindow.FindName("FiveHourCaption")).Text);
+        Equal("周额度", ((TextBlock)mainWindow.FindName("WeeklyCaption")).Text);
+
+        claudeTab.IsChecked = true;
+        mainWindow.UpdateLayout();
+        Equal("5 小时额度", ((TextBlock)mainWindow.FindName("FiveHourCaption")).Text);
+        Equal("周额度", ((TextBlock)mainWindow.FindName("WeeklyCaption")).Text);
+    }
+    finally
+    {
+        mainWindow.Close();
+    }
+});
+
 Console.WriteLine(failed == 0
     ? "全部测试通过。"
     : $"{failed} 个测试失败。");
