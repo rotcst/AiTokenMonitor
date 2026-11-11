@@ -36,7 +36,7 @@ public sealed class AntigravityUsageMonitor : IDisposable
     private bool _isBridgeConfigured;
     private int _processing;
     private bool _publishedInitialSnapshot;
-    private bool _forceRefresh;
+    private int _forceRefresh;
     private bool _disposed;
 
     public AntigravityUsageMonitor(string? antigravityHome = null, string? bridgeDirectory = null)
@@ -64,7 +64,7 @@ public sealed class AntigravityUsageMonitor : IDisposable
 
         QueueAllTranscripts();
         EnsureWatchers();
-        _forceRefresh = true;
+        Interlocked.Exchange(ref _forceRefresh, 1);
         _timer = new Timer(ProcessPending, null, TimeSpan.Zero, PollInterval);
     }
 
@@ -76,7 +76,7 @@ public sealed class AntigravityUsageMonitor : IDisposable
         }
 
         QueueAllTranscripts();
-        _forceRefresh = true;
+        Interlocked.Exchange(ref _forceRefresh, 1);
         if (_timer is null)
         {
             ProcessPending(null);
@@ -224,7 +224,7 @@ public sealed class AntigravityUsageMonitor : IDisposable
 
     private void BridgeWatcher_Changed(object sender, FileSystemEventArgs e)
     {
-        _forceRefresh = true;
+        Interlocked.Exchange(ref _forceRefresh, 1);
     }
 
     private void BridgeWatcher_Renamed(object sender, RenamedEventArgs e)
@@ -242,18 +242,8 @@ public sealed class AntigravityUsageMonitor : IDisposable
         try
         {
             EnsureWatchers();
+            var forceRefresh = Interlocked.Exchange(ref _forceRefresh, 0) != 0;
             var changed = false;
-
-            if (TryReadBridge())
-            {
-                changed = true;
-                if (_status?.TranscriptPath is { } hookedPath &&
-                    !string.IsNullOrWhiteSpace(hookedPath) &&
-                    File.Exists(hookedPath))
-                {
-                    _pendingPaths.TryAdd(hookedPath, 0);
-                }
-            }
 
             var paths = _pendingPaths.Keys.ToArray();
             foreach (var path in paths)
@@ -294,10 +284,23 @@ public sealed class AntigravityUsageMonitor : IDisposable
                     }
 
                     changed = true;
+                    // A completed turn in transcript.jsonl means quota may have moved; force a quota read.
+                    forceRefresh = true;
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {
                     _pendingPaths.TryAdd(path, 0);
+                }
+            }
+
+            if (TryReadBridge(forceRefresh))
+            {
+                changed = true;
+                if (_status?.TranscriptPath is { } hookedPath &&
+                    !string.IsNullOrWhiteSpace(hookedPath) &&
+                    File.Exists(hookedPath))
+                {
+                    _pendingPaths.TryAdd(hookedPath, 0);
                 }
             }
 
@@ -315,7 +318,6 @@ public sealed class AntigravityUsageMonitor : IDisposable
             changed |= available != _isAntigravityAvailable || configured != _isBridgeConfigured;
             _isAntigravityAvailable = available;
             _isBridgeConfigured = configured;
-            _forceRefresh = false;
 
             if (changed || !_publishedInitialSnapshot)
             {
@@ -384,9 +386,9 @@ public sealed class AntigravityUsageMonitor : IDisposable
             freshStatus?.ModelQuotas);
     }
 
-    private bool TryReadBridge()
+    private bool TryReadBridge(bool forceRefresh)
     {
-        var liveStatus = _quotaClient.TryRead(_forceRefresh);
+        var liveStatus = _quotaClient.TryRead(forceRefresh);
         var nextStatus = liveStatus;
         if (File.Exists(_bridgePath))
         {

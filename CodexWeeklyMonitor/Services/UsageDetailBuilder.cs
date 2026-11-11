@@ -223,10 +223,7 @@ public static class UsageDetailBuilder
                 $"{live.ContextUsedPercent}% · {live.ContextTokens:N0} / {live.ContextWindow:N0}");
             Add(session, Loc.T("lbl.conversationId"), live.ConversationId);
             Add(session, Loc.T("lbl.lastTurn"), Timestamp(live.ObservedAt));
-            Add(
-                session,
-                Loc.T("lbl.source"),
-                snapshot.Status is not null ? Loc.T("source.statusBridge") : Loc.T("source.localSession"));
+            Add(session, Loc.T("lbl.source"), Loc.T("source.localSession"));
         }
         else if (snapshot.Status?.ContextUsedPercent is { } context)
         {
