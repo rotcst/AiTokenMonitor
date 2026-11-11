@@ -47,6 +47,9 @@ public partial class GaugeWindow : Window
 
     public void SetAntigravity(AntigravityStatusUsage? status) => _gauge.UpdateAntigravity(status);
 
+    public void SetExternalSnapshots(IReadOnlyDictionary<ExternalProviderId, ExternalProviderSnapshot> snapshots) =>
+        _gauge.UpdateExternal(snapshots);
+
     public GaugeWindow()
     {
         InitializeComponent();

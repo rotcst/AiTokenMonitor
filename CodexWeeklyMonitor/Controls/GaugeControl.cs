@@ -27,6 +27,12 @@ internal enum GaugeProvider
     Codex,
     Claude,
     Antigravity,
+    Grok,
+    DeepSeek,
+    Kimi,
+    Qwen,
+    Glm,
+    SiliconFlow,
 }
 
 internal enum GaugeQuotaPeriod
@@ -73,6 +79,9 @@ public sealed class GaugeControl : UserControl
     private GaugeQuotaPeriod _claudePeriod = GaugeQuotaPeriod.FiveHour;
     private IReadOnlyList<AntigravityModelQuota> _antigravityQuotas = [];
     private string? _antigravityModelKey;
+    private IReadOnlyDictionary<ExternalProviderId, ExternalProviderSnapshot> _externalSnapshots =
+        new Dictionary<ExternalProviderId, ExternalProviderSnapshot>();
+    private readonly Dictionary<GaugeProvider, int> _selectedModelIndices = new();
     internal GaugeProvider LeftProvider { get; private set; } = GaugeProvider.Codex;
     internal GaugeProvider RightProvider { get; private set; } = GaugeProvider.Claude;
     private bool _codexPeriodInitialized;
@@ -221,6 +230,17 @@ public sealed class GaugeControl : UserControl
         else SetProviders(provider == other ? previous : other, provider);
     }
 
+    internal static ExternalProviderId? TryToExternalProviderId(GaugeProvider provider) => provider switch
+    {
+        GaugeProvider.Grok => ExternalProviderId.Grok,
+        GaugeProvider.DeepSeek => ExternalProviderId.DeepSeek,
+        GaugeProvider.Kimi => ExternalProviderId.Kimi,
+        GaugeProvider.Qwen => ExternalProviderId.Qwen,
+        GaugeProvider.Glm => ExternalProviderId.Glm,
+        GaugeProvider.SiliconFlow => ExternalProviderId.SiliconFlow,
+        _ => null,
+    };
+
     public void UpdateAntigravity(AntigravityStatusUsage? status)
     {
         _antigravityQuotas = status?.ModelQuotas ?? [];
@@ -229,9 +249,22 @@ public sealed class GaugeControl : UserControl
         RefreshReadouts();
     }
 
+    public void UpdateExternal(IReadOnlyDictionary<ExternalProviderId, ExternalProviderSnapshot> snapshots)
+    {
+        _externalSnapshots = snapshots;
+        RefreshReadouts();
+    }
+
     internal void ToggleProvider(GaugeProvider provider)
     {
-        if (provider == GaugeProvider.Antigravity)
+        if (TryToExternalProviderId(provider) is { } extId &&
+            _externalSnapshots.TryGetValue(extId, out var extSnapshot) &&
+            extSnapshot.Models.Count > 0)
+        {
+            var current = _selectedModelIndices.GetValueOrDefault(provider, 0);
+            _selectedModelIndices[provider] = (current + 1) % extSnapshot.Models.Count;
+        }
+        else if (provider == GaugeProvider.Antigravity)
         {
             var index = _antigravityQuotas.ToList().FindIndex(quota => quota.Key == _antigravityModelKey);
             if (_antigravityQuotas.Count > 0)
@@ -242,7 +275,7 @@ public sealed class GaugeControl : UserControl
             _codexPeriod = NextAvailableCodexPeriod();
             _codexPeriodInitialized = true;
         }
-        else
+        else if (provider == GaugeProvider.Claude)
         {
             _claudePeriod = NextAvailableClaudePeriod();
             _claudePeriodInitialized = true;
@@ -329,7 +362,83 @@ public sealed class GaugeControl : UserControl
                     GaugeQuotaPeriod.Model, now, $"M{index + 1}");
                 chamber.Root.ToolTip = quota?.DisplayName ?? "Antigravity";
                 break;
+            default:
+                if (TryToExternalProviderId(provider) is { } extId &&
+                    _externalSnapshots.TryGetValue(extId, out var extSnapshot))
+                {
+                    RenderExternalChamber(chamber, provider, extId, extSnapshot, now);
+                }
+                else
+                {
+                    chamber.SetWindow(null, GaugeQuotaPeriod.Model, now, "--");
+                    chamber.Root.ToolTip = provider.ToString();
+                }
+                break;
         }
+    }
+
+    private void RenderExternalChamber(
+        Chamber chamber,
+        GaugeProvider provider,
+        ExternalProviderId extId,
+        ExternalProviderSnapshot snapshot,
+        DateTimeOffset now)
+    {
+        var spec = ExternalProviderMonitor.GetSpec(extId);
+        var models = snapshot.Models;
+        var modelIndex = _selectedModelIndices.GetValueOrDefault(provider, 0);
+        if (models.Count > 0)
+        {
+            modelIndex = Math.Clamp(modelIndex, 0, models.Count - 1);
+            var model = models[modelIndex];
+            if (model.QuotaWindow is { } window)
+            {
+                chamber.SetWindow(window, GaugeQuotaPeriod.Model, now, $"M{modelIndex + 1}");
+                chamber.Root.ToolTip = $"{spec.DisplayName} · {model.DisplayName} (剩余 {window.RemainingPercent}%)";
+                return;
+            }
+        }
+
+        if (snapshot.FiveHour is { } fiveHour)
+        {
+            chamber.SetWindow(fiveHour, GaugeQuotaPeriod.FiveHour, now, "5H");
+            chamber.Root.ToolTip = $"{spec.DisplayName} · 5 小时额度";
+            return;
+        }
+
+        if (snapshot.Weekly is { } weekly)
+        {
+            chamber.SetWindow(weekly, GaugeQuotaPeriod.Weekly, now, "7D");
+            chamber.Root.ToolTip = $"{spec.DisplayName} · 周额度";
+            return;
+        }
+
+        if (snapshot.Balance is { } balance)
+        {
+            if (balance.RemainingBudgetPercent is { } budgetRemaining)
+            {
+                chamber.SetWindow(new RateLimitWindow(100 - budgetRemaining, null, null), GaugeQuotaPeriod.Model, now, "¥");
+                chamber.Root.ToolTip = $"{spec.DisplayName} · 预算剩余 {budgetRemaining}% (¥{balance.TotalBalance:0.##})";
+                return;
+            }
+
+            var level = (int)Math.Clamp(Math.Round((double)balance.TotalBalance), 0, 100);
+            chamber.SetWindow(new RateLimitWindow(100 - level, null, null), GaugeQuotaPeriod.Model, now, "¥");
+            chamber.SetCustomReadout($"¥{balance.TotalBalance:0.##}", $"¥ · {balance.TotalBalance:0.##}");
+            chamber.Root.ToolTip = $"{spec.DisplayName} · 余额 ¥{balance.TotalBalance:0.##}";
+            return;
+        }
+
+        if (snapshot.TokenUsage is { } tokenUsage && tokenUsage.LatestDay is { } latest)
+        {
+            chamber.SetWindow(null, GaugeQuotaPeriod.Model, now, "Tok");
+            chamber.SetCustomReadout(TokenFormatter.Format(latest.Tokens), $"今日 {TokenFormatter.Format(latest.Tokens)}");
+            chamber.Root.ToolTip = $"{spec.DisplayName} · 今日 {latest.Tokens:N0} Token";
+            return;
+        }
+
+        chamber.SetWindow(null, GaugeQuotaPeriod.Model, now, snapshot.IsAvailable ? "OK" : "--");
+        chamber.Root.ToolTip = $"{spec.DisplayName} · {(snapshot.IsAvailable ? "就绪" : "未配置")}";
     }
 
     private static void InitializePeriod(
@@ -602,13 +711,22 @@ public sealed class GaugeControl : UserControl
             {
                 GaugeProvider.Codex => CodexColor,
                 GaugeProvider.Claude => ClaudeColor,
+                GaugeProvider.Antigravity => Color.FromRgb(0x58, 0xA6, 0xFF),
+                _ when TryToExternalProviderId(provider) is { } extId =>
+                    (Color)System.Windows.Media.ColorConverter.ConvertFromString(ExternalProviderMonitor.GetSpec(extId).BarColor),
                 _ => Color.FromRgb(0x58, 0xA6, 0xFF),
             };
             _title.Text = provider.ToString().ToUpperInvariant();
-            _title.FontSize = provider == GaugeProvider.Antigravity ? 6.5 : 7.5;
+            _title.FontSize = provider.ToString().Length > 6 ? 5.8 : (provider == GaugeProvider.Antigravity ? 6.5 : 7.5);
             _title.Foreground = new SolidColorBrush(Color.FromArgb(0xB4, _baseColor.R, _baseColor.G, _baseColor.B));
             _defaultReadoutBrush = new SolidColorBrush(Lighten(_baseColor));
             Root.ToolTip = provider.ToString();
+        }
+
+        public void SetCustomReadout(string readout, string reset)
+        {
+            _readout.Text = readout;
+            _reset.Text = reset;
         }
 
         public Grid Root { get; }

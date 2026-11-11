@@ -3913,6 +3913,32 @@ RunSta("MainWindow 支持切换 Grok / DeepSeek / Kimi / Qwen / GLM / SiliconFlo
         Equal(Visibility.Visible, extraRowsPanel.Visibility);
         var extraTexts = FindVisualChildren<TextBlock>(extraRowsPanel).Select(item => item.Text).ToArray();
         Equal(true, extraTexts.Contains("Grok 3 Mini"));
+
+        // Verify window resize mode is enabled for manual dragging
+        Equal(ResizeMode.CanResize, mainWindow.ResizeMode);
+
+        // Verify GaugeWindow right-click menu has all 9 providers
+        var gaugeWindow = new GaugeWindow();
+        try
+        {
+            var providerMenu = (MenuItem)gaugeWindow.FindName("GaugeProviderMenuItem");
+            var providerTags = providerMenu.Items.OfType<MenuItem>().Select(item => item.Tag as string).ToArray();
+            Equal(9, providerTags.Length);
+            Equal(true, providerTags.Contains("Grok"));
+            Equal(true, providerTags.Contains("DeepSeek"));
+            Equal(true, providerTags.Contains("Kimi"));
+            Equal(true, providerTags.Contains("Qwen"));
+            Equal(true, providerTags.Contains("Glm"));
+            Equal(true, providerTags.Contains("SiliconFlow"));
+
+            gaugeWindow.SetProviders("DeepSeek", "Grok");
+            Equal("DeepSeek", gaugeWindow.LeftProviderName);
+            Equal("Grok", gaugeWindow.RightProviderName);
+        }
+        finally
+        {
+            gaugeWindow.Close();
+        }
     }
     finally
     {

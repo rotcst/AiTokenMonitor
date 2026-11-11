@@ -58,4 +58,6 @@ public sealed record WindowPlacement(
     double? GaugeTop = null,
     bool? GaugeMode = null,
     string LeftGaugeProvider = "Codex",
-    string RightGaugeProvider = "Claude");
+    string RightGaugeProvider = "Claude",
+    double? CustomWidth = null,
+    double? CustomHeight = null);

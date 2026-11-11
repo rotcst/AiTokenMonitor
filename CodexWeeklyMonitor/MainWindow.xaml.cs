@@ -76,6 +76,17 @@ public partial class MainWindow : Window
     private DateTimeOffset _promptedAt;
     private int _extraQuotaRows;
     private readonly List<(TextBlock ResetText, RateLimitWindow? Window)> _extraQuotaResetTargets = [];
+    private bool _hasCustomWidth;
+    private bool _hasCustomHeight;
+    private double _customWidth;
+    private double _customHeight;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+    private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    private const uint WM_SETICON = 0x0080;
+    private const int ICON_SMALL = 0;
+    private const int ICON_BIG = 1;
 
     public MainWindow() : this(null, enableMonitoring: true)
     {
@@ -160,9 +171,30 @@ public partial class MainWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
         DwmWindowChrome.ApplyRoundedCorners(
-            new System.Windows.Interop.WindowInteropHelper(this).Handle,
+            hwnd,
             borderColor: 0x00423A2E);
+        ApplyWindowNativeIcons(hwnd);
+    }
+
+    private static void ApplyWindowNativeIcons(IntPtr hwnd)
+    {
+        try
+        {
+            var iconUri = new Uri("pack://application:,,,/Assets/app.ico");
+            using var stream = System.Windows.Application.GetResourceStream(iconUri)?.Stream;
+            if (stream is not null)
+            {
+                using var icon = new System.Drawing.Icon(stream);
+                SendMessage(hwnd, WM_SETICON, new IntPtr(ICON_SMALL), icon.Handle);
+                SendMessage(hwnd, WM_SETICON, new IntPtr(ICON_BIG), icon.Handle);
+            }
+        }
+        catch
+        {
+            // Non-critical if icon extraction fails
+        }
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -335,6 +367,10 @@ public partial class MainWindow : Window
         if (TryMapExternalProvider(_activeProvider) == usage.Provider)
         {
             RenderExternalProvider(usage.Provider);
+        }
+        if (IsGaugeVisible)
+        {
+            PushGaugeValues();
         }
     }
 
@@ -1804,6 +1840,17 @@ public partial class MainWindow : Window
         _leftGaugeProvider = placement?.LeftGaugeProvider ?? "Codex";
         _rightGaugeProvider = placement?.RightGaugeProvider ?? "Claude";
 
+        if (placement is { CustomWidth: { } customW, CustomHeight: { } customH } &&
+            double.IsFinite(customW) && double.IsFinite(customH) && customW > 0 && customH > 0)
+        {
+            Width = Math.Max(MinWidth, customW);
+            Height = Math.Max(MinHeight, customH);
+            _hasCustomWidth = true;
+            _hasCustomHeight = true;
+            _customWidth = Width;
+            _customHeight = Height;
+        }
+
         var workArea = SystemParameters.WorkArea;
         if (placement is { GaugeLeft: { } gaugeLeft, GaugeTop: { } gaugeTop } &&
             double.IsFinite(gaugeLeft) && double.IsFinite(gaugeTop))
@@ -1998,6 +2045,7 @@ public partial class MainWindow : Window
     private void PushGaugeValues()
     {
         _gaugeWindow?.SetAntigravity(_antigravitySnapshot?.Status);
+        _gaugeWindow?.SetExternalSnapshots(_externalSnapshots);
         var claudeFable = _claudeSnapshot?.FableLimit;
         _gaugeWindow?.SetWindows(
             _currentSnapshot?.RateLimits.FiveHour,
@@ -2014,7 +2062,7 @@ public partial class MainWindow : Window
     {
         while (element is not null)
         {
-            if (element is ButtonBase)
+            if (element is ButtonBase or System.Windows.Controls.Primitives.ScrollBar or System.Windows.Controls.Primitives.Thumb)
             {
                 return true;
             }
@@ -2240,13 +2288,43 @@ public partial class MainWindow : Window
         RenderExpandedPanel();
     }
 
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        if (_initialized && !_isClosing && WindowState == WindowState.Normal)
+        {
+            if (sizeInfo.WidthChanged && Math.Abs(sizeInfo.NewSize.Width - sizeInfo.PreviousSize.Width) > 1)
+            {
+                _hasCustomWidth = true;
+                _customWidth = sizeInfo.NewSize.Width;
+            }
+            if (sizeInfo.HeightChanged && Math.Abs(sizeInfo.NewSize.Height - sizeInfo.PreviousSize.Height) > 1)
+            {
+                var expected = (_expandedPanel != ExpandedPanel.None ? CollapsedHeight + ExpandPanelHeight : CollapsedHeight) +
+                               (_extraQuotaRows * ExtraQuotaRowStep);
+                if (Math.Abs(sizeInfo.NewSize.Height - expected) > 2)
+                {
+                    _hasCustomHeight = true;
+                    _customHeight = sizeInfo.NewSize.Height;
+                }
+            }
+        }
+    }
+
     private void UpdateWindowHeight()
     {
         var expanded = _expandedPanel != ExpandedPanel.None;
-        var height = (expanded ? CollapsedHeight + ExpandPanelHeight : CollapsedHeight) +
-                     (_extraQuotaRows * ExtraQuotaRowStep);
-        MinHeight = height;
-        Height = height;
+        var requiredHeight = (expanded ? CollapsedHeight + ExpandPanelHeight : CollapsedHeight) +
+                             (_extraQuotaRows * ExtraQuotaRowStep);
+        MinHeight = requiredHeight;
+        if (!_hasCustomHeight || Height < requiredHeight)
+        {
+            Height = requiredHeight;
+        }
+        else if (_hasCustomHeight && _customHeight >= requiredHeight)
+        {
+            Height = _customHeight;
+        }
         ClampToWorkArea();
     }
 
@@ -2497,7 +2575,9 @@ public partial class MainWindow : Window
         _gaugeTopLeft?.Y,
         IsGaugeVisible,
         _leftGaugeProvider,
-        _rightGaugeProvider);
+        _rightGaugeProvider,
+        _hasCustomWidth ? Width : null,
+        _hasCustomHeight ? Height : null);
 
     private void CaptureGaugePlacement()
     {

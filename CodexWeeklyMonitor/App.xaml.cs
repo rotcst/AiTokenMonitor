@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using CodexWeeklyMonitor.Services;
 
@@ -7,9 +8,22 @@ public partial class App : System.Windows.Application
 {
     private SingleInstanceCoordinator? _singleInstance;
 
+    [DllImport("shell32.dll", SetLastError = true)]
+    private static extern void SetCurrentProcessExplicitAppUserModelID(
+        [MarshalAs(UnmanagedType.LPWStr)] string appId);
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        try
+        {
+            SetCurrentProcessExplicitAppUserModelID("rotcst.AiTokenMonitor");
+        }
+        catch
+        {
+            // Non-critical if shell32 is unavailable
+        }
 
         try
         {

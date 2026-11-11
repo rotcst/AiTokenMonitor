@@ -3,13 +3,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:CodexWeeklyMonitor.Localization"
         Title="{loc:Str app.title}"
-        Icon="Assets/app.png"
+        Icon="Assets/app.ico"
         Width="406"
         Height="470"
-        MinWidth="406"
+        MinWidth="380"
         MinHeight="470"
         WindowStyle="SingleBorderWindow"
-        ResizeMode="CanMinimize"
+        ResizeMode="CanResize"
         Background="#FF1A1E25"
         ShowInTaskbar="True"
         Topmost="True"
@@ -26,7 +26,7 @@
                       CornerRadius="0"
                       GlassFrameThickness="0"
                       NonClientFrameEdges="None"
-                      ResizeBorderThickness="0"
+                      ResizeBorderThickness="6"
                       UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
 

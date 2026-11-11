@@ -93,6 +93,18 @@
                                   Style="{DynamicResource ModernMenuItemStyle}" Click="ProviderMenuItem_Click" />
                         <MenuItem Header="Antigravity" Tag="Antigravity" IsCheckable="True"
                                   Style="{DynamicResource ModernMenuItemStyle}" Click="ProviderMenuItem_Click" />
+                        <MenuItem Header="Grok" Tag="Grok" IsCheckable="True"
+                                  Style="{DynamicResource ModernMenuItemStyle}" Click="ProviderMenuItem_Click" />
+                        <MenuItem Header="DeepSeek" Tag="DeepSeek" IsCheckable="True"
+                                  Style="{DynamicResource ModernMenuItemStyle}" Click="ProviderMenuItem_Click" />
+                        <MenuItem Header="Kimi" Tag="Kimi" IsCheckable="True"
+                                  Style="{DynamicResource ModernMenuItemStyle}" Click="ProviderMenuItem_Click" />
+                        <MenuItem Header="Qwen" Tag="Qwen" IsCheckable="True"
+                                  Style="{DynamicResource ModernMenuItemStyle}" Click="ProviderMenuItem_Click" />
+                        <MenuItem Header="GLM" Tag="Glm" IsCheckable="True"
+                                  Style="{DynamicResource ModernMenuItemStyle}" Click="ProviderMenuItem_Click" />
+                        <MenuItem Header="SiliconFlow" Tag="SiliconFlow" IsCheckable="True"
+                                  Style="{DynamicResource ModernMenuItemStyle}" Click="ProviderMenuItem_Click" />
                     </MenuItem>
                     <Separator Style="{DynamicResource ModernMenuSeparatorStyle}" />
                     <MenuItem x:Name="GaugeRefreshMenuItem"
