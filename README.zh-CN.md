@@ -19,13 +19,13 @@
 ## 功能
 
 - **多厂商一键横向切换**：底部提供平滑横向滚动标签栏，可在 Codex / Claude / Antigravity / Grok / DeepSeek / Kimi / Qwen / GLM / SiliconFlow 之间快速切换。
-- **动态多模型额度卡片（多行自适应）**：卡片数量不再受限为 3 张！当模型超过 3 个时（例如 Google Antigravity 的 5 个模型、Grok 的 4 个模型等），上方额度区域自动按每行 3 张卡片展开为多行，窗口高度自动平滑适应（展开/折叠依然保持精准高度），清晰呈现每个模型的名称、剩余百分比、用量进度条与重置倒计时。
+- **动态多模型额度卡片（多行自适应 & 点击切换周额度）**：卡片数量不再受限为 3 张！当模型超过 3 个时（例如 Google Antigravity 的 5 个模型、Grok 的 4 个模型等），上方额度区域自动按每行 3 张卡片展开为多行，窗口高度自动平滑适应；**鼠标单击任意模型卡片即可在「5 小时额度」与「周额度」之间无缝切换显示**，支持手型悬停高亮提示与偏好记忆保存。
 - **深度求索、月之暗面、硅基流动与 xAI 官方接口**：
   - 自动识别环境变量（如 `DEEPSEEK_API_KEY`、`MOONSHOT_API_KEY` / `KIMI_API_KEY`、`XAI_API_KEY`、`DASHSCOPE_API_KEY`、`ZHIPU_API_KEY`、`SILICONFLOW_API_KEY`）、`%LOCALAPPDATA%\AiTokenMonitor\providers.json`、Claude Code 配置文件（`~/.claude/settings.json`）及 Kimi CLI 配置文件（`~/.kimi/config.json`）。
   - 支持官方余额接口查询（DeepSeek `/user/balance`、Moonshot `/v1/users/me/balance`、SiliconFlow `/v1/user/info`、xAI `/v1/api-key`），精准展示可用余额、充值金额与赠金明细。
   - 本地会话统计：自动扫描 Claude Code 项目日志、Kimi CLI 与本地统一会话记录，按模型前缀归集各模型累计 Token、输入/缓存/输出与上下文占用。
   - 支持本地统一状态桥接（`%LOCALAPPDATA%\AiTokenMonitor\<provider>-status.json`）。
-- **Antigravity 多模型用量监控**：自动扫描 `~/.gemini/antigravity/brain/*/.system_generated/logs/transcript.jsonl`（同时支持 `antigravity-ide`、`antigravity-cli` 与 `ANTIGRAVITY_HOME`），按模型（如 Gemini 4 Argon、Gemini 3.8 Flash、Claude Opus 5.5、Claude Sonnet 5.5、GPT-OSS 120B 等）统计累计 Token、占比、调用次数、输入/缓存/输出明细，以及当前会话活跃模型与上下文占用；同时支持 `%LOCALAPPDATA%\AiTokenMonitor\antigravity-status.json` 状态桥接。
+- **Antigravity 多模型用量与完整配额分桶**：自动接入本地 Language Server 守护进程接口（`/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary` 与 `GetUserStatus`），获取 Gemini Models、Claude/GPT models、Gemini 4 Argon 各分桶的 5 小时与周额度真实限额；自动扫描 `~/.gemini/antigravity/brain/*/.system_generated/logs/transcript.jsonl`（同时支持 `antigravity-ide`、`antigravity-cli` 与 `ANTIGRAVITY_HOME`），按模型统计累计 Token、占比、调用次数、输入/缓存/输出明细，以及当前会话活跃模型与上下文占用；同时支持 `%LOCALAPPDATA%\AiTokenMonitor\antigravity-status.json` 状态桥接。
 - **真实额度，不靠估算**：读取与 CLI 相同的官方数据面——
   - Claude：`GET https://api.anthropic.com/api/oauth/usage`（即 `/usage` 背后的数据源）。接口新增的
     `seven_day_overage_included`、`model_scoped[]`、`extra_usage`、`spend` 字段会在返回时解析。

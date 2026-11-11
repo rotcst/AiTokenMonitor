@@ -323,7 +323,9 @@ internal static class AntigravityTranscriptParser
                     LastUsedAt: lastUsedAt,
                     QuotaWindow: quota is null
                         ? null
-                        : new RateLimitWindow(quota.UsedPercent, quota.ResetsAt, 10_080));
+                        : (quota.FiveHourWindow ?? quota.WeeklyWindow ?? new RateLimitWindow(quota.UsedPercent, quota.ResetsAt, 10_080)),
+                    FiveHourQuotaWindow: quota?.FiveHourWindow,
+                    WeeklyQuotaWindow: quota?.WeeklyWindow);
             })
             .OrderByDescending(model => model.TotalTokens)
             .ThenByDescending(model => model.LastUsedAt)
@@ -357,7 +359,9 @@ internal static class AntigravityTranscriptParser
                     TurnCount: 0,
                     SharePercent: 0,
                     LastUsedAt: DateTimeOffset.MinValue,
-                    QuotaWindow: new RateLimitWindow(quota.UsedPercent, quota.ResetsAt, 10_080)));
+                    QuotaWindow: quota.FiveHourWindow ?? quota.WeeklyWindow ?? new RateLimitWindow(quota.UsedPercent, quota.ResetsAt, 10_080),
+                    FiveHourQuotaWindow: quota.FiveHourWindow,
+                    WeeklyQuotaWindow: quota.WeeklyWindow));
             }
         }
 

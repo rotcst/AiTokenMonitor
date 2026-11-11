@@ -60,4 +60,5 @@ public sealed record WindowPlacement(
     string LeftGaugeProvider = "Codex",
     string RightGaugeProvider = "Claude",
     double? CustomWidth = null,
-    double? CustomHeight = null);
+    double? CustomHeight = null,
+    string? AntigravityQuotaPeriod = null);

@@ -76,6 +76,8 @@ public partial class MainWindow : Window
     private DateTimeOffset _promptedAt;
     private int _extraQuotaRows;
     private readonly List<(TextBlock ResetText, RateLimitWindow? Window)> _extraQuotaResetTargets = [];
+    private QuotaPeriod _antigravityQuotaPeriod = QuotaPeriod.FiveHour;
+    private Brush? _cardHoverBorderBrush;
     private bool _hasCustomWidth;
     private bool _hasCustomHeight;
     private double _customWidth;
@@ -1176,7 +1178,7 @@ public partial class MainWindow : Window
                 var (card, caption, remainingText, usedText, progress, resetText) = CreateExtraQuotaCard();
                 Grid.SetColumn(card, cardIndex * 2);
                 ApplyAntigravityModelCard(slice[cardIndex], caption, remainingText, usedText, progress, resetText);
-                if (slice[cardIndex].QuotaWindow is { } window)
+                if (slice[cardIndex].GetQuotaWindow(_antigravityQuotaPeriod) is { } window)
                 {
                     _extraQuotaResetTargets.Add((resetText, window));
                 }
@@ -1281,7 +1283,11 @@ public partial class MainWindow : Window
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             Child = innerGrid,
+            Cursor = System.Windows.Input.Cursors.Hand,
         };
+        card.PreviewMouseLeftButtonUp += QuotaCard_MouseLeftButtonUp;
+        card.MouseEnter += QuotaCard_MouseEnter;
+        card.MouseLeave += QuotaCard_MouseLeave;
 
         return (card, caption, remainingText, usedText, progress, resetText);
     }
@@ -1295,9 +1301,28 @@ public partial class MainWindow : Window
         TextBlock resetText)
     {
         SetCardCaptionText(caption, model.DisplayName);
-        if (model.QuotaWindow is { } window)
+        var window = model.GetQuotaWindow(_antigravityQuotaPeriod);
+        if (window is not null)
         {
             ApplyRateWindow(window, remainingText, usedText, progress, resetText);
+
+            var isWeekly = window.DurationMinutes >= 1440 ||
+                           (window.ResetsAt is { } r && r - DateTimeOffset.Now > TimeSpan.FromHours(12));
+            var periodTag = isWeekly ? Loc.T("lbl.quotaWeeklyTag") : Loc.T("lbl.quotaFiveHourTag");
+            usedText.Text = $"{Loc.T("card.usedPercent", window.UsedPercent)} · {periodTag}";
+
+            var switchTarget = _antigravityQuotaPeriod == QuotaPeriod.FiveHour
+                ? Loc.T("lbl.quotaWeeklyTag")
+                : Loc.T("lbl.quotaFiveHourTag");
+            var tip = Loc.T("tip.switchQuotaPeriod", switchTarget);
+            caption.ToolTip = tip;
+            remainingText.ToolTip = tip;
+            usedText.ToolTip = tip;
+            resetText.ToolTip = tip;
+            if (caption.Parent is Grid headerGrid && headerGrid.Parent is Grid innerGrid && innerGrid.Parent is Border cardBorder)
+            {
+                cardBorder.ToolTip = tip;
+            }
             return;
         }
 
@@ -1310,6 +1335,45 @@ public partial class MainWindow : Window
         progress.Value = model.SharePercent;
         progress.Foreground = AntigravityBarBrush;
         resetText.Text = Loc.T("unit.times", model.TurnCount);
+    }
+
+    private void QuotaCard_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_activeProvider == UsageProvider.Antigravity)
+        {
+            _antigravityQuotaPeriod = _antigravityQuotaPeriod == QuotaPeriod.FiveHour
+                ? QuotaPeriod.Weekly
+                : QuotaPeriod.FiveHour;
+            SavePlacement();
+            RenderAntigravity();
+            e.Handled = true;
+        }
+        else if (TryMapExternalProvider(_activeProvider) is { } externalId)
+        {
+            _antigravityQuotaPeriod = _antigravityQuotaPeriod == QuotaPeriod.FiveHour
+                ? QuotaPeriod.Weekly
+                : QuotaPeriod.FiveHour;
+            SavePlacement();
+            RenderExternalProvider(externalId);
+            e.Handled = true;
+        }
+    }
+
+    private void QuotaCard_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is Border border)
+        {
+            _cardHoverBorderBrush ??= new SolidColorBrush(Color.FromRgb(0x47, 0x55, 0x69));
+            border.BorderBrush = _cardHoverBorderBrush;
+        }
+    }
+
+    private void QuotaCard_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is Border border)
+        {
+            border.BorderBrush = (Brush)FindResource("CardBorderBrush");
+        }
     }
 
     private static void SetCardCaptionText(TextBlock caption, string text)
@@ -1660,15 +1724,15 @@ public partial class MainWindow : Window
             var extModels = extSnapshot?.Models ?? Array.Empty<AntigravityModelUsage>();
             if (extModels.Count > 0)
             {
-                if (extModels[0].QuotaWindow is { } firstWindow)
+                if (extModels[0].GetQuotaWindow(_antigravityQuotaPeriod) is { } firstWindow)
                 {
                     SetCompactResetLabel(FiveHourResetText, firstWindow);
                 }
-                if (extModels.Count >= 2 && extModels[1].QuotaWindow is { } secondWindow)
+                if (extModels.Count >= 2 && extModels[1].GetQuotaWindow(_antigravityQuotaPeriod) is { } secondWindow)
                 {
                     SetCompactResetLabel(WeeklyResetText, secondWindow);
                 }
-                if (extModels.Count >= 3 && extModels[2].QuotaWindow is { } thirdWindow)
+                if (extModels.Count >= 3 && extModels[2].GetQuotaWindow(_antigravityQuotaPeriod) is { } thirdWindow)
                 {
                     SetCompactResetLabel(LunaResetText, thirdWindow);
                 }
@@ -1692,15 +1756,15 @@ public partial class MainWindow : Window
             var models = GetOrderedAntigravityModels(_antigravitySnapshot);
             if (models.Count > 0)
             {
-                if (models[0].QuotaWindow is { } firstWindow)
+                if (models[0].GetQuotaWindow(_antigravityQuotaPeriod) is { } firstWindow)
                 {
                     SetCompactResetLabel(FiveHourResetText, firstWindow);
                 }
-                if (models.Count >= 2 && models[1].QuotaWindow is { } secondWindow)
+                if (models.Count >= 2 && models[1].GetQuotaWindow(_antigravityQuotaPeriod) is { } secondWindow)
                 {
                     SetCompactResetLabel(WeeklyResetText, secondWindow);
                 }
-                if (models.Count >= 3 && models[2].QuotaWindow is { } thirdWindow)
+                if (models.Count >= 3 && models[2].GetQuotaWindow(_antigravityQuotaPeriod) is { } thirdWindow)
                 {
                     SetCompactResetLabel(LunaResetText, thirdWindow);
                 }
@@ -1839,6 +1903,12 @@ public partial class MainWindow : Window
         WindowState = WindowState.Normal;
         _leftGaugeProvider = placement?.LeftGaugeProvider ?? "Codex";
         _rightGaugeProvider = placement?.RightGaugeProvider ?? "Claude";
+
+        if (placement?.AntigravityQuotaPeriod is { } pStr &&
+            Enum.TryParse<QuotaPeriod>(pStr, true, out var p))
+        {
+            _antigravityQuotaPeriod = p;
+        }
 
         if (placement is { CustomWidth: { } customW, CustomHeight: { } customH } &&
             double.IsFinite(customW) && double.IsFinite(customH) && customW > 0 && customH > 0)
@@ -2577,7 +2647,8 @@ public partial class MainWindow : Window
         _leftGaugeProvider,
         _rightGaugeProvider,
         _hasCustomWidth ? Width : null,
-        _hasCustomHeight ? Height : null);
+        _hasCustomHeight ? Height : null,
+        _antigravityQuotaPeriod.ToString());
 
     private void CaptureGaugePlacement()
     {

@@ -248,10 +248,26 @@ public static class UsageDetailBuilder
             {
                 foreach (var modelQuota in status.ModelQuotas)
                 {
-                    AddWindow(
-                        quota,
-                        modelQuota.DisplayName,
-                        new RateLimitWindow(modelQuota.UsedPercent, modelQuota.ResetsAt, 10_080));
+                    if (modelQuota.FiveHourWindow is { } f5h && modelQuota.WeeklyWindow is { } fWk)
+                    {
+                        AddWindow(quota, $"{modelQuota.DisplayName} (5小时)", f5h);
+                        AddWindow(quota, $"{modelQuota.DisplayName} (周额度)", fWk);
+                    }
+                    else if (modelQuota.WeeklyWindow is { } wkW)
+                    {
+                        AddWindow(quota, $"{modelQuota.DisplayName} (周额度)", wkW);
+                    }
+                    else if (modelQuota.FiveHourWindow is { } f5hW)
+                    {
+                        AddWindow(quota, $"{modelQuota.DisplayName} (5小时)", f5hW);
+                    }
+                    else
+                    {
+                        AddWindow(
+                            quota,
+                            modelQuota.DisplayName,
+                            new RateLimitWindow(modelQuota.UsedPercent, modelQuota.ResetsAt, 10_080));
+                    }
                 }
             }
 

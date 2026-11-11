@@ -110,15 +110,59 @@ internal static class AntigravityStatusParser
                 continue;
             }
 
+            var fiveHour = TryGetObject(entry, "five_hour") is { } f5h
+                ? ParseWindowDirect(f5h, 300)
+                : (TryGetObject(entry, "fiveHour") is { } f5hC ? ParseWindowDirect(f5hC, 300) : null);
+
+            var weekly = TryGetObject(entry, "weekly") is { } fWk
+                ? ParseWindowDirect(fWk, 10_080)
+                : (TryGetObject(entry, "seven_day") is { } f7d
+                    ? ParseWindowDirect(f7d, 10_080)
+                    : (TryGetObject(entry, "sevenDay") is { } f7dC ? ParseWindowDirect(f7dC, 10_080) : null));
+
+            var resetsAt = TryGetTimestampAny(entry, "resets_at", "reset_at", "resetsAt");
+            var used = ToPercent(utilization.Value);
+
+            if (fiveHour is null && weekly is null)
+            {
+                if (resetsAt is { } rt && rt - DateTimeOffset.Now > TimeSpan.FromHours(12))
+                {
+                    weekly = new RateLimitWindow(used, resetsAt, 10_080);
+                }
+                else
+                {
+                    fiveHour = new RateLimitWindow(used, resetsAt, 300);
+                }
+            }
+
             result.Add(new AntigravityModelQuota(
                 Key: $"model:{modelName}",
                 ModelName: modelName,
                 DisplayName: displayName,
-                UsedPercent: ToPercent(utilization.Value),
-                ResetsAt: TryGetTimestampAny(entry, "resets_at", "reset_at", "resetsAt")));
+                UsedPercent: used,
+                ResetsAt: resetsAt ?? fiveHour?.ResetsAt ?? weekly?.ResetsAt,
+                FiveHourWindow: fiveHour,
+                WeeklyWindow: weekly));
         }
 
         return result;
+    }
+
+    private static RateLimitWindow? ParseWindowDirect(JsonElement window, long durationMinutes)
+    {
+        var usedPercentage = TryGetDouble(window, "used_percentage") ??
+                             TryGetDouble(window, "usedPercent") ??
+                             TryGetDouble(window, "utilization") ??
+                             TryGetDouble(window, "percent");
+        if (usedPercentage is null)
+        {
+            return null;
+        }
+
+        return new RateLimitWindow(
+            ToPercent(usedPercentage.Value),
+            TryGetTimestampAny(window, "resets_at", "reset_at", "resetsAt"),
+            durationMinutes);
     }
 
     private static RateLimitWindow? ParseWindow(

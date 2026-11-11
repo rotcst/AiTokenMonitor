@@ -3946,6 +3946,196 @@ RunSta("MainWindow 支持切换 Grok / DeepSeek / Kimi / Qwen / GLM / SiliconFlo
     }
 });
 
+Run("Antigravity：解析 RetrieveUserQuotaSummary 完整分桶与模型关联（5小时与周额度）", () =>
+{
+    var now = DateTimeOffset.Now;
+    using var statusDoc = JsonDocument.Parse("""
+        {"userStatus":{"planStatus":{"planInfo":{"planName":"Pro"}},
+          "cascadeModelConfigData":{"clientModelConfigs":[
+            {"label":"Gemini 3.8 Flash (High)","quotaInfo":{"remainingFraction":0.84,"resetTime":"2026-11-12T06:13:00Z"}},
+            {"label":"Gemini 4 Argon (High)","quotaInfo":{"resetTime":"2026-11-17T20:29:00Z"}},
+            {"label":"Claude Opus 5.5","quotaInfo":{"remainingFraction":1.0,"resetTime":"2026-11-12T07:23:00Z"}},
+            {"label":"Claude Sonnet 5.5","quotaInfo":{"remainingFraction":1.0,"resetTime":"2026-11-12T07:23:00Z"}},
+            {"label":"GPT-OSS 120B (Medium)","quotaInfo":{"remainingFraction":1.0,"resetTime":"2026-11-12T07:23:00Z"}}
+          ]}}}
+        """);
+
+    using var summaryDoc = JsonDocument.Parse("""
+        {"response":{"groups":[
+          {"displayName":"Gemini Models","description":"Models within this group: Gemini Flash, Gemini Pro",
+           "buckets":[
+             {"bucketId":"gemini-weekly","window":"weekly","remainingFraction":0.73,"resetTime":"2026-11-17T12:00:00Z"},
+             {"bucketId":"gemini-5h","window":"5h","remainingFraction":0.84,"resetTime":"2026-11-12T06:13:00Z"}
+           ]},
+          {"displayName":"Claude and GPT models","description":"Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+           "buckets":[
+             {"bucketId":"3p-weekly","window":"weekly","remainingFraction":1.0,"resetTime":"2026-11-18T12:00:00Z"},
+             {"bucketId":"3p-5h","window":"5h","remainingFraction":1.0,"resetTime":"2026-11-12T07:23:00Z"}
+           ]},
+          {"displayName":"Gemini 4 Argon","description":"For paid Pro plans, Argon quota is separate.",
+           "buckets":[
+             {"bucketId":"gemini-argon-wtu-weekly","window":"weekly","remainingFraction":0.0,"resetTime":"2026-11-17T20:29:00Z"}
+           ]}
+        ]}}
+        """);
+
+    var parsed = AntigravityQuotaClient.Parse(statusDoc.RootElement, now, summaryDoc.RootElement)!;
+    Equal("Pro", parsed.PlanType);
+    Equal(5, parsed.ModelQuotas!.Count);
+
+    var flashQuota = parsed.ModelQuotas.Single(q => q.DisplayName.Contains("Flash"));
+    Equal(84, flashQuota.FiveHourWindow!.RemainingPercent);
+    Equal(73, flashQuota.WeeklyWindow!.RemainingPercent);
+
+    var argonQuota = parsed.ModelQuotas.Single(q => q.DisplayName.Contains("Argon"));
+    Equal<RateLimitWindow?>(null, argonQuota.FiveHourWindow);
+    Equal(0, argonQuota.WeeklyWindow!.RemainingPercent);
+
+    var records = new[]
+    {
+        new AntigravityTokenRecord("turn1", "conv1", "Gemini 3.8 Flash (High)", DateOnly.FromDateTime(DateTime.Today), 10, 0, 10, 20, now)
+    };
+    var models = AntigravityTranscriptParser.BuildModelUsage(records, DateOnly.FromDateTime(DateTime.Today), parsed.ModelQuotas);
+    Equal(5, models.Count);
+
+    var flashModel = models.Single(m => m.DisplayName.Contains("Flash"));
+    Equal(84, flashModel.GetQuotaWindow(QuotaPeriod.FiveHour)!.RemainingPercent);
+    Equal(73, flashModel.GetQuotaWindow(QuotaPeriod.Weekly)!.RemainingPercent);
+
+    var argonModel = models.Single(m => m.DisplayName.Contains("Argon"));
+    Equal(0, argonModel.GetQuotaWindow(QuotaPeriod.FiveHour)!.RemainingPercent); // Fallback to weekly because only weekly exists
+    Equal(0, argonModel.GetQuotaWindow(QuotaPeriod.Weekly)!.RemainingPercent);
+
+    // Verify UsageDetailBuilder outputs both 5-hour and Weekly entries
+    var snapshot = new AntigravityUsageSnapshot(
+        models,
+        new AccountTokenUsage(100, 10, 20, 1, 1, [new DailyTokenUsage(DateOnly.FromDateTime(DateTime.Today), 100)], now),
+        new AntigravitySessionState("conv1", "Gemini 3.8 Flash (High)", 1000, 200, 5, now),
+        parsed,
+        1, 5, true, true, now);
+
+    var details = UsageDetailBuilder.BuildAntigravity(snapshot);
+    var quotaSection = details.Single(s => s.Title == "额度");
+    var quotaLabels = quotaSection.Items.Select(item => item.Label).ToArray();
+    Equal(true, quotaLabels.Any(t => t.Contains("Flash") && t.Contains("5小时")));
+    Equal(true, quotaLabels.Any(t => t.Contains("Flash") && t.Contains("周额度")));
+    Equal(true, quotaLabels.Any(t => t.Contains("Argon") && t.Contains("周额度")));
+});
+
+RunSta("Antigravity：主界面卡片支持鼠标点击切换 5 小时与周额度剩余百分比显示", () =>
+{
+    var now = DateTimeOffset.Now;
+    var flash = new AntigravityModelUsage(
+        ModelName: "gemini-3.8-flash",
+        DisplayName: "Gemini 3.8 Flash (High)",
+        TotalTokens: 1000,
+        InputTokens: 500,
+        CacheReadTokens: 0,
+        OutputTokens: 500,
+        TodayTokens: 1000,
+        SevenDayTokens: 1000,
+        TurnCount: 10,
+        SharePercent: 50,
+        LastUsedAt: now,
+        QuotaWindow: new RateLimitWindow(16, now.AddHours(4), 300),
+        FiveHourQuotaWindow: new RateLimitWindow(16, now.AddHours(4), 300),
+        WeeklyQuotaWindow: new RateLimitWindow(27, now.AddDays(5), 10_080));
+
+    var argon = new AntigravityModelUsage(
+        ModelName: "gemini-4-argon",
+        DisplayName: "Gemini 4 Argon (High)",
+        TotalTokens: 1000,
+        InputTokens: 500,
+        CacheReadTokens: 0,
+        OutputTokens: 500,
+        TodayTokens: 1000,
+        SevenDayTokens: 1000,
+        TurnCount: 10,
+        SharePercent: 50,
+        LastUsedAt: now,
+        QuotaWindow: new RateLimitWindow(100, now.AddDays(5), 10_080),
+        FiveHourQuotaWindow: null,
+        WeeklyQuotaWindow: new RateLimitWindow(100, now.AddDays(5), 10_080));
+
+    var status = new AntigravityStatusUsage(
+        FiveHour: flash.FiveHourQuotaWindow,
+        Weekly: flash.WeeklyQuotaWindow,
+        ModelName: "Gemini 3.8 Flash (High)",
+        ConversationId: "conv-1",
+        ContextUsedPercent: 19,
+        PlanType: "Pro",
+        ObservedAt: now,
+        ModelQuotas: [
+            new AntigravityModelQuota("m:flash", "gemini-3.8-flash", "Gemini 3.8 Flash (High)", 16, now.AddHours(4), null, flash.FiveHourQuotaWindow, flash.WeeklyQuotaWindow),
+            new AntigravityModelQuota("m:argon", "gemini-4-argon", "Gemini 4 Argon (High)", 100, now.AddDays(5), null, null, argon.WeeklyQuotaWindow)
+        ]);
+
+    var snapshot = new AntigravityUsageSnapshot(
+        Models: [flash, argon],
+        TokenUsage: new AccountTokenUsage(2000, 1000, 0, 1, 1, [new DailyTokenUsage(DateOnly.FromDateTime(DateTime.Today), 2000)], now),
+        Session: new AntigravitySessionState("conv-1", "Gemini 3.8 Flash (High)", 190_000, 1000, 10, now),
+        Status: status,
+        TotalConversations: 1,
+        TotalTurns: 10,
+        IsAntigravityAvailable: true,
+        IsBridgeConfigured: true,
+        FetchedAt: now);
+
+    var mainWindow = new MainWindow(new FakeTrayIconService(), enableMonitoring: false);
+    try
+    {
+        mainWindow.Show();
+        mainWindow.UpdateLayout();
+        mainWindow.ApplyAntigravitySnapshot(snapshot);
+        var tab = (RadioButton)mainWindow.FindName("AntigravityProviderTab");
+        tab.IsChecked = true;
+        mainWindow.UpdateLayout();
+
+        var card1 = (Border)mainWindow.FindName("FiveHourQuotaCard");
+        var card1Remaining = (TextBlock)mainWindow.FindName("FiveHourRemainingText");
+        var card1Used = (TextBlock)mainWindow.FindName("FiveHourUsedText");
+
+        // 默认 5小时 模式
+        Equal("84%", card1Remaining.Text);
+        Equal(true, card1Used.Text.Contains("5小时"));
+
+        // 模拟鼠标左键点击卡片切换为周额度
+        var mouseUpArgs = new System.Windows.Input.MouseButtonEventArgs(
+            System.Windows.Input.Mouse.PrimaryDevice,
+            0,
+            System.Windows.Input.MouseButton.Left)
+        {
+            RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent,
+            Source = card1
+        };
+        card1.RaiseEvent(mouseUpArgs);
+        mainWindow.UpdateLayout();
+
+        // 切换后：周额度剩余 73% (100 - 27)
+        Equal("73%", card1Remaining.Text);
+        Equal(true, card1Used.Text.Contains("周额度"));
+
+        // 再次点击切回 5小时 模式
+        var mouseUpArgs2 = new System.Windows.Input.MouseButtonEventArgs(
+            System.Windows.Input.Mouse.PrimaryDevice,
+            0,
+            System.Windows.Input.MouseButton.Left)
+        {
+            RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent,
+            Source = card1
+        };
+        card1.RaiseEvent(mouseUpArgs2);
+        mainWindow.UpdateLayout();
+
+        Equal("84%", card1Remaining.Text);
+        Equal(true, card1Used.Text.Contains("5小时"));
+    }
+    finally
+    {
+        mainWindow.Close();
+    }
+});
+
 Console.WriteLine(failed == 0
     ? "全部测试通过。"
     : $"{failed} 个测试失败。");

@@ -1,6 +1,15 @@
 namespace CodexWeeklyMonitor.Models;
 
 /// <summary>
+/// Quota window period displayed on model cards (5-hour vs 7-day weekly).
+/// </summary>
+public enum QuotaPeriod
+{
+    FiveHour,
+    Weekly,
+}
+
+/// <summary>
 /// Per-model token and invocation statistics aggregated from Antigravity conversation transcripts
 /// (and optional quota windows supplied by a hook/status bridge).
 /// </summary>
@@ -16,7 +25,32 @@ public sealed record AntigravityModelUsage(
     int TurnCount,
     int SharePercent,
     DateTimeOffset LastUsedAt,
-    RateLimitWindow? QuotaWindow = null);
+    RateLimitWindow? QuotaWindow = null,
+    RateLimitWindow? FiveHourQuotaWindow = null,
+    RateLimitWindow? WeeklyQuotaWindow = null)
+{
+    public RateLimitWindow? GetQuotaWindow(QuotaPeriod period) => period switch
+    {
+        QuotaPeriod.Weekly => WeeklyQuotaWindow ?? (IsWeekly(QuotaWindow) ? QuotaWindow : null) ?? QuotaWindow,
+        QuotaPeriod.FiveHour => FiveHourQuotaWindow ?? (IsFiveHour(QuotaWindow) ? QuotaWindow : null) ?? QuotaWindow,
+        _ => QuotaWindow ?? FiveHourQuotaWindow ?? WeeklyQuotaWindow,
+    };
+
+    public bool HasPeriod(QuotaPeriod period) => period switch
+    {
+        QuotaPeriod.Weekly => WeeklyQuotaWindow is not null || IsWeekly(QuotaWindow),
+        QuotaPeriod.FiveHour => FiveHourQuotaWindow is not null || IsFiveHour(QuotaWindow),
+        _ => QuotaWindow is not null,
+    };
+
+    private static bool IsWeekly(RateLimitWindow? window) =>
+        window?.DurationMinutes >= 1440 ||
+        (window?.ResetsAt is { } resets && resets - DateTimeOffset.Now > TimeSpan.FromHours(12));
+
+    private static bool IsFiveHour(RateLimitWindow? window) =>
+        window?.DurationMinutes is > 0 and <= 720 ||
+        (window?.ResetsAt is { } resets && resets - DateTimeOffset.Now <= TimeSpan.FromHours(12));
+}
 
 /// <summary>
 /// Per-model quota window reported by an optional Antigravity status/hook bridge.
@@ -27,7 +61,9 @@ public sealed record AntigravityModelQuota(
     string DisplayName,
     int UsedPercent,
     DateTimeOffset? ResetsAt,
-    IReadOnlyList<string>? ModelAliases = null)
+    IReadOnlyList<string>? ModelAliases = null,
+    RateLimitWindow? FiveHourWindow = null,
+    RateLimitWindow? WeeklyWindow = null)
 {
     public int RemainingPercent => Math.Clamp(100 - UsedPercent, 0, 100);
 }

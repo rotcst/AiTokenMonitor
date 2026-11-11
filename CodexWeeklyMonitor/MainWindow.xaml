@@ -390,7 +390,11 @@
                             Background="{StaticResource CardBrush}"
                             BorderBrush="{StaticResource CardBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="10">
+                            CornerRadius="10"
+                            Cursor="Hand"
+                            PreviewMouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
+                            MouseEnter="QuotaCard_MouseEnter"
+                            MouseLeave="QuotaCard_MouseLeave">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="*" />
@@ -455,7 +459,11 @@
                             Background="{StaticResource CardBrush}"
                             BorderBrush="{StaticResource CardBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="10">
+                            CornerRadius="10"
+                            Cursor="Hand"
+                            PreviewMouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
+                            MouseEnter="QuotaCard_MouseEnter"
+                            MouseLeave="QuotaCard_MouseLeave">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="*" />
@@ -520,7 +528,11 @@
                             Background="{StaticResource CardBrush}"
                             BorderBrush="{StaticResource CardBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="10">
+                            CornerRadius="10"
+                            Cursor="Hand"
+                            PreviewMouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
+                            MouseEnter="QuotaCard_MouseEnter"
+                            MouseLeave="QuotaCard_MouseLeave">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="*" />
