@@ -8,10 +8,8 @@ using Point = System.Windows.Point;
 namespace CodexWeeklyMonitor;
 
 /// <summary>
-/// The compact "orb" mode: a small circular racing-style gauge showing Codex and Claude usage at a
-/// glance. Clicking the Codex half cycles its 5-hour, weekly, and Luna Reserve windows; clicking
-/// the Claude half cycles every 5-hour, weekly, and Fable point window the account returned. Dragging
-/// moves the orb.
+/// The compact orb shows two selectable monitors. Each side's context menu selects its provider,
+/// and a left click cycles that provider's available quota windows or models. Dragging moves the orb.
 /// </summary>
 public partial class GaugeWindow : Window
 {
@@ -34,6 +32,20 @@ public partial class GaugeWindow : Window
     public static double GroundShadowTop => OrbOffsetY + OrbDiameter - (GroundShadowHeight * 0.35);
 
     private readonly GaugeControl _gauge = new();
+    private bool _contextIsLeft = true;
+
+    public event EventHandler? ProvidersChanged;
+    internal string LeftProviderName => _gauge.LeftProvider.ToString();
+    internal string RightProviderName => _gauge.RightProvider.ToString();
+
+    internal void SetProviders(string? left, string? right)
+    {
+        _gauge.SetProviders(
+            Enum.TryParse<GaugeProvider>(left, out var leftProvider) ? leftProvider : GaugeProvider.Codex,
+            Enum.TryParse<GaugeProvider>(right, out var rightProvider) ? rightProvider : GaugeProvider.Claude);
+    }
+
+    public void SetAntigravity(AntigravityStatusUsage? status) => _gauge.UpdateAntigravity(status);
 
     public GaugeWindow()
     {
@@ -148,9 +160,30 @@ public partial class GaugeWindow : Window
 
     private void GaugeContextMenu_Opened(object sender, RoutedEventArgs e)
     {
+        GaugeProviderMenuItem.Header = Loc.T(_contextIsLeft ? "menu.leftMonitor" : "menu.rightMonitor");
+        var selected = _contextIsLeft ? _gauge.LeftProvider : _gauge.RightProvider;
+        foreach (var item in GaugeProviderMenuItem.Items.OfType<System.Windows.Controls.MenuItem>())
+        {
+            item.IsChecked = string.Equals(item.Tag as string, selected.ToString(), StringComparison.Ordinal);
+        }
         GaugeTopmostMenuItem.IsChecked = Topmost;
         GaugeStartupMenuItem.IsEnabled = StartupRegistration.IsSupported;
         GaugeStartupMenuItem.IsChecked = StartupRegistration.IsEnabled();
+    }
+
+    private void OrbSurface_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _contextIsLeft = e.GetPosition(_gauge).X < GaugeControl.Diameter / 2;
+    }
+
+    private void ProviderMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.MenuItem { Tag: string name } &&
+            Enum.TryParse<GaugeProvider>(name, out var provider))
+        {
+            _gauge.SelectProvider(_contextIsLeft, provider);
+            ProvidersChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void TopmostMenuItem_Click(object sender, RoutedEventArgs e)

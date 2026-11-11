@@ -62,6 +62,8 @@ public partial class MainWindow : Window
     private bool _initialized;
     private ExpandedPanel _expandedPanel = ExpandedPanel.None;
     private GaugeWindow? _gaugeWindow;
+    private string _leftGaugeProvider = "Codex";
+    private string _rightGaugeProvider = "Claude";
     private Point? _gaugeTopLeft;
     private bool _updateCheckInProgress;
     private bool _manualUpdateResultRequested;
@@ -129,7 +131,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Starts monitoring at sign-in and restores the orb if it was the saved display mode.
+    /// Starts monitoring at sign-in and shows the orb using the saved position and providers.
     /// </summary>
     /// <remarks>
     /// The main window is never shown, not shown-then-hidden. The first attempt showed it fully
@@ -142,7 +144,8 @@ public partial class MainWindow : Window
     /// </remarks>
     internal void StartAtSignIn()
     {
-        _ = InitializeAsync(atSignIn: true);
+        _ = InitializeAsync();
+        ShowGauge(activate: false);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -160,10 +163,10 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Brings up placement, monitors, and timers. Driven by <see cref="FrameworkElement.Loaded"/>
-    /// for a normal launch and called directly when the app starts into the tray, so it must not
+    /// for a normal launch and called directly when the app starts into orb mode, so it must not
     /// depend on the window being visible - nothing here does.
     /// </summary>
-    private async Task InitializeAsync(bool atSignIn = false)
+    private async Task InitializeAsync()
     {
         if (_initialized)
         {
@@ -181,10 +184,6 @@ public partial class MainWindow : Window
         RestorePlacement(placement);
         // Normalise the header captions (arrow suffix) for whatever state placement restored.
         SetExpandedPanel(_expandedPanel);
-        if (atSignIn && placement?.RestoreGaugeAtSignIn == true)
-        {
-            ShowGauge(activate: false);
-        }
         _localTokenMonitor.Start();
         _claudeMonitor.Start();
         _antigravityMonitor.Start();
@@ -295,6 +294,11 @@ public partial class MainWindow : Window
         if (_activeProvider == UsageProvider.Antigravity)
         {
             RenderAntigravity();
+        }
+
+        if (IsGaugeVisible)
+        {
+            PushGaugeValues();
         }
     }
 
@@ -649,7 +653,8 @@ public partial class MainWindow : Window
         LifetimeTokensCaption.Text = Loc.T("card.localLifetimeTokens");
 
         var snapshot = _antigravitySnapshot;
-        var models = snapshot?.Models ?? Array.Empty<AntigravityModelUsage>();
+        IReadOnlyList<AntigravityModelUsage> models = (snapshot?.Models ?? Array.Empty<AntigravityModelUsage>())
+            .OrderByDescending(model => model.QuotaWindow is not null).ToArray();
         if (models.Count > 0)
         {
             SetQuotaVisibility(
@@ -749,6 +754,7 @@ public partial class MainWindow : Window
         var tokenStatus = snapshot switch
         {
             null => Loc.T("conn.readingAntigravity"),
+            { Status.ModelQuotas.Count: > 0 } => Loc.T("status.antigravityQuota"),
             { Models.Count: > 0 } => Loc.T("status.antigravityLocal", models.Count),
             { IsAntigravityAvailable: false } => Loc.T("status.antigravityNotDetected"),
             _ => Loc.T("status.antigravityNoHistory"),
@@ -1291,6 +1297,8 @@ public partial class MainWindow : Window
         // Now that the card owns a taskbar button, WPF honours the show-state the launcher passed
         // in STARTUPINFO, which can start it iconic. The monitor should always come up visible.
         WindowState = WindowState.Normal;
+        _leftGaugeProvider = placement?.LeftGaugeProvider ?? "Codex";
+        _rightGaugeProvider = placement?.RightGaugeProvider ?? "Claude";
 
         var workArea = SystemParameters.WorkArea;
         if (placement is { GaugeLeft: { } gaugeLeft, GaugeTop: { } gaugeTop } &&
@@ -1358,6 +1366,13 @@ public partial class MainWindow : Window
         if (_gaugeWindow is null)
         {
             _gaugeWindow = new GaugeWindow { Topmost = Topmost };
+            _gaugeWindow.SetProviders(_leftGaugeProvider, _rightGaugeProvider);
+            _gaugeWindow.ProvidersChanged += (_, _) =>
+            {
+                _leftGaugeProvider = _gaugeWindow.LeftProviderName;
+                _rightGaugeProvider = _gaugeWindow.RightProviderName;
+                SavePlacement();
+            };
             _gaugeWindow.RestoreRequested += (_, _) => RunOnDispatcher(ExitGaugeMode);
             _gaugeWindow.RefreshRequested += GaugeWindow_RefreshRequested;
             _gaugeWindow.UpdateRequested += GaugeWindow_UpdateRequested;
@@ -1478,6 +1493,7 @@ public partial class MainWindow : Window
     /// <summary>Feeds all selectable quota windows to each side of the orb.</summary>
     private void PushGaugeValues()
     {
+        _gaugeWindow?.SetAntigravity(_antigravitySnapshot?.Status);
         var claudeFable = _claudeSnapshot?.FableLimit;
         _gaugeWindow?.SetWindows(
             _currentSnapshot?.RateLimits.FiveHour,
@@ -1927,7 +1943,9 @@ public partial class MainWindow : Window
         _expandedPanel == ExpandedPanel.Details,
         _gaugeTopLeft?.X,
         _gaugeTopLeft?.Y,
-        IsGaugeVisible);
+        IsGaugeVisible,
+        _leftGaugeProvider,
+        _rightGaugeProvider);
 
     private void CaptureGaugePlacement()
     {

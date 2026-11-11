@@ -56,9 +56,6 @@ public sealed record WindowPlacement(
     bool DetailsExpanded = false,
     double? GaugeLeft = null,
     double? GaugeTop = null,
-    bool? GaugeMode = null)
-{
-    // Legacy settings only recorded the orb position. Treat a recorded position as prior orb use.
-    internal bool RestoreGaugeAtSignIn => GaugeMode ??
-        (GaugeLeft is { } left && double.IsFinite(left) && GaugeTop is { } top && double.IsFinite(top));
-}
+    bool? GaugeMode = null,
+    string LeftGaugeProvider = "Codex",
+    string RightGaugeProvider = "Claude");

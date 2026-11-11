@@ -26,6 +26,7 @@ internal enum GaugeProvider
 {
     Codex,
     Claude,
+    Antigravity,
 }
 
 internal enum GaugeQuotaPeriod
@@ -34,20 +35,20 @@ internal enum GaugeQuotaPeriod
     Weekly,
     LunaReserve,
     FableCredits,
+    Model,
 }
 
 /// <summary>
-/// The orb's liquid dashboard: one circle split into two chambers — Codex on the left, Claude on the
-/// right — each a draining tank whose water level is the provider's <em>remaining</em> quota. A full
+/// The orb's liquid dashboard: two selectable provider chambers, each a draining tank whose water
+/// level is the provider's <em>remaining</em> quota. A full
 /// tank reads 100% (fresh), a dry tank 0% (exhausted), and the readout always matches the water line.
 /// </summary>
 /// <remarks>
 /// The whole control is clipped to a circle; a thin seam splits it. Each chamber clips its own liquid
 /// so waves never bleed across the divider. The surface is two scrolling sine bands (a slow, faint
 /// back swell and a quicker front ripple) whose horizontal drift runs forever on their own storyboards.
-/// <see cref="Update"/> supplies the provider quota windows. Clicking the Codex chamber cycles through
-/// its 5-hour, weekly, and Luna Reserve windows; Claude cycles through every 5-hour, weekly, and
-/// Fable point window that the account actually returned.
+/// <see cref="Update"/> supplies quota windows. Each chamber cycles the selected provider's available
+/// windows or Antigravity models. The window menu selects which two providers are displayed.
 /// </remarks>
 public sealed class GaugeControl : UserControl
 {
@@ -70,6 +71,10 @@ public sealed class GaugeControl : UserControl
     private RateLimitWindow? _claudeFable;
     private GaugeQuotaPeriod _codexPeriod = GaugeQuotaPeriod.FiveHour;
     private GaugeQuotaPeriod _claudePeriod = GaugeQuotaPeriod.FiveHour;
+    private IReadOnlyList<AntigravityModelQuota> _antigravityQuotas = [];
+    private string? _antigravityModelKey;
+    internal GaugeProvider LeftProvider { get; private set; } = GaugeProvider.Codex;
+    internal GaugeProvider RightProvider { get; private set; } = GaugeProvider.Claude;
     private bool _codexPeriodInitialized;
     private bool _claudePeriodInitialized;
 
@@ -199,9 +204,40 @@ public sealed class GaugeControl : UserControl
 
     internal string ClaudeResetText => _claude.ResetText;
 
+    internal void SetProviders(GaugeProvider left, GaugeProvider right)
+    {
+        LeftProvider = Enum.IsDefined(left) ? left : GaugeProvider.Codex;
+        RightProvider = Enum.IsDefined(right) && right != LeftProvider ? right
+            : LeftProvider == GaugeProvider.Claude ? GaugeProvider.Codex : GaugeProvider.Claude;
+        RefreshReadouts();
+    }
+
+    internal void SelectProvider(bool isLeft, GaugeProvider provider)
+    {
+        if (!Enum.IsDefined(provider)) return;
+        var previous = isLeft ? LeftProvider : RightProvider;
+        var other = isLeft ? RightProvider : LeftProvider;
+        if (isLeft) SetProviders(provider, provider == other ? previous : other);
+        else SetProviders(provider == other ? previous : other, provider);
+    }
+
+    public void UpdateAntigravity(AntigravityStatusUsage? status)
+    {
+        _antigravityQuotas = status?.ModelQuotas ?? [];
+        if (!_antigravityQuotas.Any(quota => quota.Key == _antigravityModelKey))
+            _antigravityModelKey = _antigravityQuotas.FirstOrDefault()?.Key;
+        RefreshReadouts();
+    }
+
     internal void ToggleProvider(GaugeProvider provider)
     {
-        if (provider == GaugeProvider.Codex)
+        if (provider == GaugeProvider.Antigravity)
+        {
+            var index = _antigravityQuotas.ToList().FindIndex(quota => quota.Key == _antigravityModelKey);
+            if (_antigravityQuotas.Count > 0)
+                _antigravityModelKey = _antigravityQuotas[(index + 1) % _antigravityQuotas.Count].Key;
+        }
+        else if (provider == GaugeProvider.Codex)
         {
             _codexPeriod = NextAvailableCodexPeriod();
             _codexPeriodInitialized = true;
@@ -222,7 +258,7 @@ public sealed class GaugeControl : UserControl
             return false;
         }
 
-        ToggleProvider(provider);
+        ToggleProvider(provider == GaugeProvider.Codex ? LeftProvider : RightProvider);
         return true;
     }
 
@@ -270,15 +306,30 @@ public sealed class GaugeControl : UserControl
 
     private void RefreshReadouts()
     {
+        RenderChamber(_codex, LeftProvider);
+        RenderChamber(_claude, RightProvider);
+    }
+
+    private void RenderChamber(Chamber chamber, GaugeProvider provider)
+    {
+        chamber.SetProvider(provider);
         var now = _clock();
-        _codex.SetWindow(
-            SelectWindow(_codexFiveHour, _codexWeekly, _codexLunaReserve, null, _codexPeriod),
-            _codexPeriod,
-            now);
-        _claude.SetWindow(
-            SelectWindow(_claudeFiveHour, _claudeWeekly, null, _claudeFable, _claudePeriod),
-            _claudePeriod,
-            now);
+        switch (provider)
+        {
+            case GaugeProvider.Codex:
+                chamber.SetWindow(SelectWindow(_codexFiveHour, _codexWeekly, _codexLunaReserve, null, _codexPeriod), _codexPeriod, now);
+                break;
+            case GaugeProvider.Claude:
+                chamber.SetWindow(SelectWindow(_claudeFiveHour, _claudeWeekly, null, _claudeFable, _claudePeriod), _claudePeriod, now);
+                break;
+            case GaugeProvider.Antigravity:
+                var quota = _antigravityQuotas.FirstOrDefault(item => item.Key == _antigravityModelKey);
+                var index = _antigravityQuotas.ToList().FindIndex(item => item.Key == _antigravityModelKey);
+                chamber.SetWindow(quota is null ? null : new RateLimitWindow(quota.UsedPercent, quota.ResetsAt, null),
+                    GaugeQuotaPeriod.Model, now, $"M{index + 1}");
+                chamber.Root.ToolTip = quota?.DisplayName ?? "Antigravity";
+                break;
+        }
     }
 
     private static void InitializePeriod(
@@ -449,13 +500,14 @@ public sealed class GaugeControl : UserControl
 
         private readonly List<TranslateTransform> _levelTransforms = [];
         private readonly List<SolidColorBrush> _liquidBrushes = [];
-        private readonly Color _baseColor;
+        private Color _baseColor;
         private readonly TextBlock _title;
         private readonly TextBlock _readout;
         private readonly TextBlock _reset;
-        private readonly Brush _defaultReadoutBrush;
+        private Brush _defaultReadoutBrush;
         private DateTimeOffset? _resetsAt;
-        private GaugeQuotaPeriod _period;
+        private string _periodLabel = "H";
+        private GaugeProvider? _provider;
 
         public Chamber(Color color, string name, bool isLeft)
         {
@@ -542,6 +594,23 @@ public sealed class GaugeControl : UserControl
             Root.Children.Add(_reset);
         }
 
+        public void SetProvider(GaugeProvider provider)
+        {
+            if (_provider == provider) return;
+            _provider = provider;
+            _baseColor = provider switch
+            {
+                GaugeProvider.Codex => CodexColor,
+                GaugeProvider.Claude => ClaudeColor,
+                _ => Color.FromRgb(0x58, 0xA6, 0xFF),
+            };
+            _title.Text = provider.ToString().ToUpperInvariant();
+            _title.FontSize = provider == GaugeProvider.Antigravity ? 6.5 : 7.5;
+            _title.Foreground = new SolidColorBrush(Color.FromArgb(0xB4, _baseColor.R, _baseColor.G, _baseColor.B));
+            _defaultReadoutBrush = new SolidColorBrush(Lighten(_baseColor));
+            Root.ToolTip = provider.ToString();
+        }
+
         public Grid Root { get; }
 
         public string TitleText => _title.Text;
@@ -562,9 +631,10 @@ public sealed class GaugeControl : UserControl
         public void SetWindow(
             RateLimitWindow? window,
             GaugeQuotaPeriod period,
-            DateTimeOffset now)
+            DateTimeOffset now,
+            string? label = null)
         {
-            _period = period;
+            _periodLabel = label ?? PeriodLabel(period);
             _resetsAt = window?.ResetsAt;
             SetLevel(window?.RemainingPercent);
             RefreshCountdown(now);
@@ -572,7 +642,7 @@ public sealed class GaugeControl : UserControl
 
         public void RefreshCountdown(DateTimeOffset now)
         {
-            _reset.Text = $"{PeriodLabel(_period)} · {FormatResetCountdown(_resetsAt, now)}";
+            _reset.Text = $"{_periodLabel} · {FormatResetCountdown(_resetsAt, now)}";
         }
 
         private void SetLevel(int? remaining)

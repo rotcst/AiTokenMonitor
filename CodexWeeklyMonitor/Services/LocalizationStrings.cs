@@ -47,6 +47,8 @@ internal static class Strings
         ["card.weekly"] = ["周额度", "Weekly limit", "주간 한도"],
         ["card.lunaReserve"] = ["Luna 储备额度", "Luna Reserve", "Luna 예비 한도"],
         ["card.fableCredits"] = ["Fable 5.1 点数额度", "Fable 5.1 point quota", "Fable 5.1 포인트 한도"],
+        ["menu.leftMonitor"] = ["左侧监控", "Left monitor", "왼쪽 모니터"],
+        ["menu.rightMonitor"] = ["右侧监控", "Right monitor", "오른쪽 모니터"],
         ["card.modelWeekly"] = ["{0} 周额度", "{0} weekly limit", "{0} 주간 한도"],
         ["card.used"] = ["已用 {0}%", "{0}% used", "{0}% 사용"],
         ["card.usedApprox"] = ["约已用 {0}% · 旧数据", "~{0}% used · stale", "약 {0}% 사용 · 이전 데이터"],
@@ -75,7 +77,7 @@ internal static class Strings
         ["card.context"] = ["上下文占用", "Context used", "컨텍스트 사용"],
         ["card.plan"] = ["订阅计划", "Plan", "요금제"],
         ["card.modelShare"] = ["占比 {0}%", "{0}% share", "비율 {0}%"],
-        ["card.modelCount"] = ["活跃模型", "Models used", "사용 모델"],
+        ["card.modelCount"] = ["模型数量", "Models", "모델 수"],
         ["card.noModelData"] = ["暂无模型记录", "No model records", "모델 기록 없음"],
         ["credit.unlimited"] = ["不限", "Unlimited", "무제한"],
         ["credit.available"] = ["可用", "Available", "사용 가능"],
@@ -96,6 +98,7 @@ internal static class Strings
         ["status.claudeOfficial"] = ["额度来自 Claude 官方接口 · Token 为本机统计", "Quota from Claude's API · tokens counted locally", "한도는 Claude 공식 API · 토큰은 로컬 집계"],
         ["status.claudeNotDetected"] = ["未检测到 Claude · 安装并登录 Claude Code 后可用", "Claude not found · install and sign in to Claude Code", "Claude 없음 · Claude Code 설치·로그인 필요"],
         ["status.antigravityLocal"] = ["各模型与 Token 来自 Antigravity 本机会话记录", "Per-model & token stats from local Antigravity sessions", "모델별 및 토큰 통계는 로컬 Antigravity 세션 기준"],
+        ["status.antigravityQuota"] = ["额度来自 Antigravity 本机服务 · Token 为本机统计", "Quota from the Antigravity local service · Tokens counted locally", "한도는 Antigravity 로컬 서비스 기준 · 토큰은 로컬 집계"],
         ["status.antigravityBridge"] = ["额度与模型来自状态桥接 · Token 为本机统计", "Quota & model from bridge · tokens counted locally", "한도·모델은 브리지 · 토큰은 로컬 집계"],
         ["status.antigravityNotDetected"] = ["未检测到 Antigravity 会话记录", "No Antigravity session logs found", "Antigravity 세션 기록 없음"],
         ["retry.minutes"] = ["{0} 分钟", "{0} min", "{0}분"],
@@ -161,7 +164,7 @@ internal static class Strings
         ["update.installErrorDetail"] = ["更新安装失败：{0}", "Update installation failed: {0}", "업데이트 설치 실패: {0}"],
 
         // Gauge / orb mode
-        ["gauge.switchHint"] = ["单击左侧循环切换 5 小时/周/Luna 储备额度，右侧切换 5 小时/周/Fable 点数额度；拖动可移动", "Click the left side to cycle 5-hour/weekly/Luna Reserve; the right side switches 5-hour/weekly/Fable point quota; drag to move", "왼쪽을 클릭해 5시간·주간·Luna 예비 한도를 순환하고 오른쪽은 5시간·주간·Fable 포인트 한도를 전환합니다. 드래그해 이동"],
+        ["gauge.switchHint"] = ["单击任一侧循环切换额度窗口或模型，右键选择该侧的监控；拖动可移动", "Click either side to cycle quota windows or models; right-click to choose its monitor; drag to move", "각 측면을 클릭해 한도 또는 모델을 전환하고 우클릭해 모니터를 선택합니다. 드래그해 이동"],
 
         // Tray status lines
         ["tray.weeklyUnknown"] = ["{0}：周额度未知", "{0}: weekly unknown", "{0}: 주간 한도 미상"],

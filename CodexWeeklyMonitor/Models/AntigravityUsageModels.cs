@@ -26,7 +26,8 @@ public sealed record AntigravityModelQuota(
     string ModelName,
     string DisplayName,
     int UsedPercent,
-    DateTimeOffset? ResetsAt)
+    DateTimeOffset? ResetsAt,
+    IReadOnlyList<string>? ModelAliases = null)
 {
     public int RemainingPercent => Math.Clamp(100 - UsedPercent, 0, 100);
 }

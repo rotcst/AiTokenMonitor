@@ -21,6 +21,7 @@ public sealed class AntigravityUsageMonitor : IDisposable
     private readonly IReadOnlyList<string> _brainDirectories;
     private readonly string _bridgeDirectory;
     private readonly string _bridgePath;
+    private readonly AntigravityQuotaClient _quotaClient;
     private readonly List<FileSystemWatcher> _transcriptWatchers = [];
 
     private FileSystemWatcher? _bridgeWatcher;
@@ -41,6 +42,7 @@ public sealed class AntigravityUsageMonitor : IDisposable
     public AntigravityUsageMonitor(string? antigravityHome = null, string? bridgeDirectory = null)
     {
         _antigravityHome = AntigravityPaths.ResolveHome(antigravityHome);
+        _quotaClient = new AntigravityQuotaClient(_antigravityHome);
         _brainDirectories = AntigravityPaths.ResolveBrainDirectories(antigravityHome);
         _bridgeDirectory = string.IsNullOrWhiteSpace(bridgeDirectory)
             ? Path.Combine(
@@ -242,17 +244,14 @@ public sealed class AntigravityUsageMonitor : IDisposable
             EnsureWatchers();
             var changed = false;
 
-            if (_forceRefresh || File.Exists(_bridgePath))
+            if (TryReadBridge())
             {
-                if (TryReadBridge())
+                changed = true;
+                if (_status?.TranscriptPath is { } hookedPath &&
+                    !string.IsNullOrWhiteSpace(hookedPath) &&
+                    File.Exists(hookedPath))
                 {
-                    changed = true;
-                    if (_status?.TranscriptPath is { } hookedPath &&
-                        !string.IsNullOrWhiteSpace(hookedPath) &&
-                        File.Exists(hookedPath))
-                    {
-                        _pendingPaths.TryAdd(hookedPath, 0);
-                    }
+                    _pendingPaths.TryAdd(hookedPath, 0);
                 }
             }
 
@@ -387,41 +386,41 @@ public sealed class AntigravityUsageMonitor : IDisposable
 
     private bool TryReadBridge()
     {
-        if (!File.Exists(_bridgePath))
+        var liveStatus = _quotaClient.TryRead(_forceRefresh);
+        var nextStatus = liveStatus;
+        if (File.Exists(_bridgePath))
         {
-            if (_status is null)
+            try
             {
-                return false;
+                using var stream = new FileStream(_bridgePath, FileMode.Open, FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+                using var document = JsonDocument.Parse(stream);
+                var bridge = AntigravityStatusParser.Parse(document.RootElement,
+                    new DateTimeOffset(File.GetLastWriteTimeUtc(_bridgePath), TimeSpan.Zero));
+                nextStatus = liveStatus is null ? bridge : liveStatus;
+                if (liveStatus is not null && DateTimeOffset.Now - bridge.ObservedAt <= StatusMaxAge)
+                {
+                    nextStatus = liveStatus with
+                    {
+                        FiveHour = bridge.FiveHour,
+                        Weekly = bridge.Weekly,
+                        ModelName = bridge.ModelName,
+                        ConversationId = bridge.ConversationId,
+                        ContextUsedPercent = bridge.ContextUsedPercent,
+                        TranscriptPath = bridge.TranscriptPath,
+                    };
+                }
             }
-
-            _status = null;
-            return true;
-        }
-
-        try
-        {
-            using var stream = new FileStream(
-                _bridgePath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete);
-            using var document = JsonDocument.Parse(stream);
-            var status = AntigravityStatusParser.Parse(
-                document.RootElement,
-                new DateTimeOffset(File.GetLastWriteTimeUtc(_bridgePath), TimeSpan.Zero));
-            if (status == _status)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
             {
-                return false;
+                // A partially written bridge must not discard a usable live quota or prior snapshot.
+                nextStatus ??= _status;
             }
+        }
 
-            _status = status;
-            return true;
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return false;
-        }
+        if (nextStatus == _status) return false;
+        _status = nextStatus;
+        return true;
     }
 
     private static bool TryGetFileState(string path, out FileState state)
@@ -606,6 +605,9 @@ public sealed class AntigravityUsageMonitor : IDisposable
 
         _disposed = true;
         _timer?.Dispose();
+        // The polling callback may be inside a quota read during shutdown.
+        // HttpClient disposal cancels the outstanding bounded loopback request.
+        _quotaClient.Dispose();
         foreach (var watcher in _transcriptWatchers)
         {
             watcher.Dispose();

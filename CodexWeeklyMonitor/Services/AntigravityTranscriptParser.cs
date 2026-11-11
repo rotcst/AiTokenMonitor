@@ -339,7 +339,8 @@ internal static class AntigravityTranscriptParser
                                   quota.DisplayName;
                 if (byModel.Any(existing =>
                         string.Equals(existing.DisplayName, displayName, StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(existing.ModelName, quota.ModelName, StringComparison.OrdinalIgnoreCase)))
+                        string.Equals(existing.ModelName, quota.ModelName, StringComparison.OrdinalIgnoreCase) ||
+                        (quota.ModelAliases?.Contains(existing.ModelName, StringComparer.OrdinalIgnoreCase) ?? false)))
                 {
                     continue;
                 }
@@ -374,6 +375,9 @@ internal static class AntigravityTranscriptParser
         }
 
         return quotas.FirstOrDefault(quota =>
+            (quota.ModelAliases?.Any(alias =>
+                string.Equals(alias, displayName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(alias, rawName, StringComparison.OrdinalIgnoreCase)) ?? false) ||
             string.Equals(quota.DisplayName, displayName, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(quota.ModelName, rawName, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(

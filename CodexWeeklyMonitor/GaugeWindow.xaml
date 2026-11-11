@@ -78,6 +78,7 @@
         </Ellipse>
 
         <Grid x:Name="OrbSurface"
+              PreviewMouseRightButtonDown="OrbSurface_MouseRightButtonDown"
               Canvas.Left="{x:Static local:GaugeWindow.OrbOffsetX}"
               Canvas.Top="{x:Static local:GaugeWindow.OrbOffsetY}"
               Width="{x:Static local:GaugeWindow.OrbDiameter}"
@@ -85,6 +86,15 @@
             <Grid.ContextMenu>
                 <ContextMenu Style="{DynamicResource ModernContextMenuStyle}"
                              Opened="GaugeContextMenu_Opened">
+                    <MenuItem x:Name="GaugeProviderMenuItem" Style="{DynamicResource ModernMenuItemStyle}">
+                        <MenuItem Header="Codex" Tag="Codex" IsCheckable="True"
+                                  Style="{DynamicResource ModernMenuItemStyle}" Click="ProviderMenuItem_Click" />
+                        <MenuItem Header="Claude" Tag="Claude" IsCheckable="True"
+                                  Style="{DynamicResource ModernMenuItemStyle}" Click="ProviderMenuItem_Click" />
+                        <MenuItem Header="Antigravity" Tag="Antigravity" IsCheckable="True"
+                                  Style="{DynamicResource ModernMenuItemStyle}" Click="ProviderMenuItem_Click" />
+                    </MenuItem>
+                    <Separator Style="{DynamicResource ModernMenuSeparatorStyle}" />
                     <MenuItem x:Name="GaugeRefreshMenuItem"
                               Header="{loc:Str menu.refresh}"
                               Style="{DynamicResource ModernMenuItemStyle}"

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Globalization;
 using System.IO;
@@ -1567,16 +1567,16 @@ Run("窗口位置未初始化时不写入也不抛出", () =>
     WindowPlacementStore.Save(new WindowPlacement(double.PositiveInfinity, double.NaN, true));
 });
 
-Run("开机悬浮球遵循已保存模式并兼容旧坐标", () =>
+Run("悬浮球左右选择兼容旧设置并持久化", () =>
 {
     var legacy = JsonSerializer.Deserialize<WindowPlacement>(
-        """{"Left":100,"Top":200,"Topmost":true,"GaugeLeft":300,"GaugeTop":400}""")!;
-    Equal(true, legacy.RestoreGaugeAtSignIn);
-    Equal(false, (legacy with { GaugeTop = null }).RestoreGaugeAtSignIn);
-    Equal(false, (legacy with { GaugeMode = false }).RestoreGaugeAtSignIn);
-    var savedGauge = legacy with { GaugeMode = true, GaugeLeft = null, GaugeTop = null };
-    Equal(true, JsonSerializer.Deserialize<WindowPlacement>(
-        JsonSerializer.Serialize(savedGauge))!.RestoreGaugeAtSignIn);
+        """{"Left":100,"Top":200,"Topmost":true,"GaugeMode":false}""")!;
+    Equal("Codex", legacy.LeftGaugeProvider);
+    Equal("Claude", legacy.RightGaugeProvider);
+    var saved = legacy with { LeftGaugeProvider = "Antigravity", RightGaugeProvider = "Codex" };
+    var loaded = JsonSerializer.Deserialize<WindowPlacement>(JsonSerializer.Serialize(saved))!;
+    Equal("Antigravity", loaded.LeftGaugeProvider);
+    Equal("Codex", loaded.RightGaugeProvider);
 });
 
 Run("GitHub Release 更新元数据、版本和 SHA-256 校验", () =>
@@ -3388,6 +3388,86 @@ Run("更新下载在收到响应头后停滞仍会超时并清理临时文件", 
     {
         if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
     }
+});
+
+Run("Antigravity：真实状态协议的剩余比例、零值、不可用模型与分组", () =>
+{
+    using var document = JsonDocument.Parse("""
+        {"userStatus":{"planStatus":{"planInfo":{"planName":"Pro"}},
+          "cascadeModelConfigData":{"clientModelConfigs":[
+            {"label":"Gemini (High)","quotaInfo":{"remainingFraction":0.72,"resetTime":"2026-11-17T20:00:00Z"}},
+            {"label":"Gemini (Medium)","quotaInfo":{"remainingFraction":0.72,"resetTime":"2026-11-17T20:00:00Z"}},
+            {"label":"Gemini (Low)","quotaInfo":{"remainingFraction":0.721,"resetTime":"2026-11-17T20:00:00Z"}},
+            {"label":"Claude","quotaInfo":{"remainingFraction":1}},
+            {"label":"Exhausted","quotaInfo":{"resetTime":"2026-11-17T20:00:00Z"}},
+            {"label":"Unknown","quotaInfo":{}},
+            {"label":"Invalid","quotaInfo":{"remainingFraction":2}},
+            {"label":"Disabled","disabled":true,"quotaInfo":{"remainingFraction":0.5}}
+          ]}}}
+        """);
+    var status = AntigravityQuotaClient.Parse(document.RootElement, DateTimeOffset.Now)!;
+    Equal("Pro", status.PlanType);
+    Equal(4, status.ModelQuotas!.Count);
+    Equal("Gemini", status.ModelQuotas[0].DisplayName);
+    Equal(72, status.ModelQuotas[0].RemainingPercent);
+    Equal(2, status.ModelQuotas[0].ModelAliases!.Count);
+    var records = new[] { new AntigravityTokenRecord(
+        "turn", "conversation", "Gemini (High)", DateOnly.FromDateTime(DateTime.Today), 10, 0, 10, 20, DateTimeOffset.Now) };
+    var aggregate = AntigravityTranscriptParser.BuildModelUsage(records, DateOnly.FromDateTime(DateTime.Today), status.ModelQuotas);
+    Equal(4, aggregate.Count);
+    Equal(72, aggregate.Single(model => model.ModelName == "Gemini (High)").QuotaWindow!.RemainingPercent);
+    Equal(100, status.ModelQuotas[2].RemainingPercent);
+    Equal(0, status.ModelQuotas[3].RemainingPercent);
+    using var malformed = JsonDocument.Parse("null");
+    Equal<AntigravityStatusUsage?>(null, AntigravityQuotaClient.Parse(malformed.RootElement, DateTimeOffset.Now));
+});
+
+RunSta("悬浮球三选二、互换与 Antigravity 模型循环", () =>
+{
+    var now = DateTimeOffset.Now;
+    var gauge = new GaugeControl(() => now);
+    gauge.Update(new RateLimitWindow(10, now.AddHours(1), 300), null, null,
+        new RateLimitWindow(20, now.AddHours(2), 300), null, null);
+    gauge.UpdateAntigravity(new AntigravityStatusUsage(null, null, null, null, null, "Pro", now,
+        [new AntigravityModelQuota("a", "Gemini", "Gemini", 28, now.AddDays(1)),
+         new AntigravityModelQuota("b", "Claude", "Claude", 100, now.AddDays(2))]));
+    gauge.SelectProvider(true, GaugeProvider.Antigravity);
+    Equal("ANTIGRAVITY", gauge.CodexTitleText);
+    Equal("72%", gauge.CodexPercentText);
+    gauge.ToggleProviderAt(new System.Windows.Point(10, 58));
+    Equal("0%", gauge.CodexPercentText);
+    Equal("80%", gauge.ClaudePercentText);
+    gauge.SelectProvider(false, GaugeProvider.Codex);
+    Equal("90%", gauge.ClaudePercentText);
+    gauge.SelectProvider(true, GaugeProvider.Codex);
+    Equal(GaugeProvider.Codex, gauge.LeftProvider);
+    Equal(GaugeProvider.Antigravity, gauge.RightProvider);
+    Equal("0%", gauge.ClaudePercentText);
+    gauge.ToggleProviderAt(new System.Windows.Point(106, 58));
+    Equal("72%", gauge.ClaudePercentText);
+    gauge.SetProviders((GaugeProvider)99, (GaugeProvider)99);
+    Equal(GaugeProvider.Codex, gauge.LeftProvider);
+    Equal(GaugeProvider.Claude, gauge.RightProvider);
+});
+
+RunSta("开机入口在主窗口从未显示时直接显示悬浮球", () =>
+{
+    using var tray = new FakeTrayIconService();
+    var main = new MainWindow(tray, enableMonitoring: false);
+    try
+    {
+        main.StartAtSignIn();
+        var orb = main.GaugeWindowForTesting!;
+        Equal(true, orb.IsVisible);
+        Equal(false, main.IsVisible);
+        Equal(false, orb.ShowActivated);
+        orb.SetProviders("Antigravity", "Codex");
+        main.ExitGaugeMode();
+        main.EnterGaugeMode();
+        Equal("Antigravity", orb.LeftProviderName);
+        Equal("Codex", orb.RightProviderName);
+    }
+    finally { main.Close(); }
 });
 
 Run("Antigravity：解析 transcript.jsonl 的模型切换、按模型统计与去重", () =>
