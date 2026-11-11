@@ -392,7 +392,9 @@
                             BorderThickness="1"
                             CornerRadius="10"
                             Cursor="Hand"
+                            Tag="QuotaCard"
                             PreviewMouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
+                            MouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
                             MouseEnter="QuotaCard_MouseEnter"
                             MouseLeave="QuotaCard_MouseLeave">
                         <Grid>
@@ -432,8 +434,8 @@
                                          Style="{StaticResource RoundedProgressStyle}" />
                             <Grid Grid.Row="4" ClipToBounds="True">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1.1*" />
-                                    <ColumnDefinition Width="1.4*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock x:Name="FiveHourUsedText"
                                            Grid.Column="0"
@@ -461,7 +463,9 @@
                             BorderThickness="1"
                             CornerRadius="10"
                             Cursor="Hand"
+                            Tag="QuotaCard"
                             PreviewMouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
+                            MouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
                             MouseEnter="QuotaCard_MouseEnter"
                             MouseLeave="QuotaCard_MouseLeave">
                         <Grid>
@@ -501,8 +505,8 @@
                                          Style="{StaticResource RoundedProgressStyle}" />
                             <Grid Grid.Row="4" ClipToBounds="True">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1.1*" />
-                                    <ColumnDefinition Width="1.4*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock x:Name="WeeklyUsedText"
                                            Grid.Column="0"
@@ -530,7 +534,9 @@
                             BorderThickness="1"
                             CornerRadius="10"
                             Cursor="Hand"
+                            Tag="QuotaCard"
                             PreviewMouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
+                            MouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
                             MouseEnter="QuotaCard_MouseEnter"
                             MouseLeave="QuotaCard_MouseLeave">
                         <Grid>
@@ -571,8 +577,8 @@
                                          Style="{StaticResource RoundedProgressStyle}" />
                             <Grid Grid.Row="4" ClipToBounds="True">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1.1*" />
-                                    <ColumnDefinition Width="1.4*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock x:Name="LunaUsedText"
                                            Grid.Column="0"

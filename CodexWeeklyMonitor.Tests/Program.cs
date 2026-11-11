@@ -4097,7 +4097,21 @@ RunSta("Antigravity：主界面卡片支持鼠标点击切换 5 小时与周额�
 
         // 默认 5小时 模式
         Equal("84%", card1Remaining.Text);
-        Equal(true, card1Used.Text.Contains("5小时"));
+        Equal(false, card1Used.Text.Contains("card.usedPercent"));
+        Equal(true, card1Used.Text.Contains("已用 16%"));
+        Equal(true, card1Used.Text.Contains("5h") || card1Used.Text.Contains("5小时"));
+
+        // 模拟鼠标左键在卡片上按下（确保被判定为可交互卡片，不触发窗口拖拽拦截）
+        var mouseDownArgs = new System.Windows.Input.MouseButtonEventArgs(
+            System.Windows.Input.Mouse.PrimaryDevice,
+            0,
+            System.Windows.Input.MouseButton.Left)
+        {
+            RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent,
+            Source = card1
+        };
+        var rootBorder = (Border)mainWindow.FindName("Card");
+        rootBorder.RaiseEvent(mouseDownArgs);
 
         // 模拟鼠标左键点击卡片切换为周额度
         var mouseUpArgs = new System.Windows.Input.MouseButtonEventArgs(
@@ -4113,9 +4127,12 @@ RunSta("Antigravity：主界面卡片支持鼠标点击切换 5 小时与周额�
 
         // 切换后：周额度剩余 73% (100 - 27)
         Equal("73%", card1Remaining.Text);
-        Equal(true, card1Used.Text.Contains("周额度"));
+        Equal(false, card1Used.Text.Contains("card.usedPercent"));
+        Equal(true, card1Used.Text.Contains("已用 27%"));
+        Equal(true, card1Used.Text.Contains("周") || card1Used.Text.Contains("周额度"));
 
-        // 再次点击切回 5小时 模式
+        // 再次在卡片上按下并释放，切回 5小时 模式
+        rootBorder.RaiseEvent(mouseDownArgs);
         var mouseUpArgs2 = new System.Windows.Input.MouseButtonEventArgs(
             System.Windows.Input.Mouse.PrimaryDevice,
             0,
@@ -4128,7 +4145,8 @@ RunSta("Antigravity：主界面卡片支持鼠标点击切换 5 小时与周额�
         mainWindow.UpdateLayout();
 
         Equal("84%", card1Remaining.Text);
-        Equal(true, card1Used.Text.Contains("5小时"));
+        Equal(true, card1Used.Text.Contains("已用 16%"));
+        Equal(true, card1Used.Text.Contains("5h") || card1Used.Text.Contains("5小时"));
     }
     finally
     {

@@ -1259,8 +1259,8 @@ public partial class MainWindow : Window
         Grid.SetColumn(resetText, 1);
 
         var footerGrid = new Grid { ClipToBounds = true };
-        footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.1, GridUnitType.Star) });
-        footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.4, GridUnitType.Star) });
+        footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         footerGrid.Children.Add(usedText);
         footerGrid.Children.Add(resetText);
         Grid.SetRow(footerGrid, 4);
@@ -1284,8 +1284,10 @@ public partial class MainWindow : Window
             CornerRadius = new CornerRadius(10),
             Child = innerGrid,
             Cursor = System.Windows.Input.Cursors.Hand,
+            Tag = "QuotaCard",
         };
         card.PreviewMouseLeftButtonUp += QuotaCard_MouseLeftButtonUp;
+        card.MouseLeftButtonUp += QuotaCard_MouseLeftButtonUp;
         card.MouseEnter += QuotaCard_MouseEnter;
         card.MouseLeave += QuotaCard_MouseLeave;
 
@@ -1308,8 +1310,8 @@ public partial class MainWindow : Window
 
             var isWeekly = window.DurationMinutes >= 1440 ||
                            (window.ResetsAt is { } r && r - DateTimeOffset.Now > TimeSpan.FromHours(12));
-            var periodTag = isWeekly ? Loc.T("lbl.quotaWeeklyTag") : Loc.T("lbl.quotaFiveHourTag");
-            usedText.Text = $"{Loc.T("card.usedPercent", window.UsedPercent)} · {periodTag}";
+            var periodTag = isWeekly ? Loc.T("lbl.quotaWeeklyShort") : Loc.T("lbl.quotaFiveHourShort");
+            usedText.Text = Loc.T("card.usedWithPeriod", window.UsedPercent, periodTag);
 
             var switchTarget = _antigravityQuotaPeriod == QuotaPeriod.FiveHour
                 ? Loc.T("lbl.quotaWeeklyTag")
@@ -1952,7 +1954,7 @@ public partial class MainWindow : Window
 
     private void Card_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || IsInsideButton(e.OriginalSource as DependencyObject))
+        if (e.LeftButton != MouseButtonState.Pressed || IsInsideInteractiveElement(e.OriginalSource as DependencyObject))
         {
             return;
         }
@@ -2128,13 +2130,29 @@ public partial class MainWindow : Window
                 : new RateLimitWindow(claudeFable.UsedPercent, claudeFable.ResetsAt, 10_080));
     }
 
-    private static bool IsInsideButton(DependencyObject? element)
+    private bool IsInsideInteractiveElement(DependencyObject? element)
     {
         while (element is not null)
         {
             if (element is ButtonBase or System.Windows.Controls.Primitives.ScrollBar or System.Windows.Controls.Primitives.Thumb)
             {
                 return true;
+            }
+
+            if (element is FrameworkElement fe)
+            {
+                if (fe == FiveHourQuotaCard || fe == WeeklyQuotaCard || fe == LunaQuotaCard || Equals(fe.Tag, "QuotaCard"))
+                {
+                    if (_activeProvider == UsageProvider.Antigravity || TryMapExternalProvider(_activeProvider) is not null)
+                    {
+                        return true;
+                    }
+                }
+
+                if (fe.Cursor == System.Windows.Input.Cursors.Hand)
+                {
+                    return true;
+                }
             }
 
             element = VisualTreeHelper.GetParent(element);
