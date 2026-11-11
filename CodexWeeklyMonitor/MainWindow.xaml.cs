@@ -23,6 +23,9 @@ public partial class MainWindow : Window
 {
     private const double CollapsedHeight = 470;
     private const double ExpandPanelHeight = 236;
+    private const double QuotaRowHeight = 116;
+    private const double QuotaRowGap = 10;
+    private const double ExtraQuotaRowStep = QuotaRowHeight + QuotaRowGap;
 
     private static readonly Brush WarningBrush = QuotaColorScale.BrushForRemaining(50);
     private static readonly Brush DangerBrush = QuotaColorScale.BrushForRemaining(0);
@@ -45,6 +48,7 @@ public partial class MainWindow : Window
     private readonly LocalSessionTokenMonitor _localTokenMonitor;
     private readonly ClaudeUsageMonitor _claudeMonitor;
     private readonly AntigravityUsageMonitor _antigravityMonitor;
+    private readonly ExternalProviderMonitor _externalMonitor;
     private readonly bool _monitoringEnabled;
     private readonly DispatcherTimer _refreshTimer;
     private readonly DispatcherTimer _clockTimer;
@@ -53,6 +57,7 @@ public partial class MainWindow : Window
     private CodexUsageSnapshot? _currentSnapshot;
     private ClaudeUsageSnapshot? _claudeSnapshot;
     private AntigravityUsageSnapshot? _antigravitySnapshot;
+    private readonly Dictionary<ExternalProviderId, ExternalProviderSnapshot> _externalSnapshots = new();
     private TodayTokenUsage? _todayTokenUsage;
     private AccountTokenUsage? _displayTokenUsage;
     private Exception? _codexError;
@@ -69,6 +74,8 @@ public partial class MainWindow : Window
     private bool _manualUpdateResultRequested;
     private Version? _promptedVersion;
     private DateTimeOffset _promptedAt;
+    private int _extraQuotaRows;
+    private readonly List<(TextBlock ResetText, RateLimitWindow? Window)> _extraQuotaResetTargets = [];
 
     public MainWindow() : this(null, enableMonitoring: true)
     {
@@ -89,6 +96,7 @@ public partial class MainWindow : Window
         _localTokenMonitor = new LocalSessionTokenMonitor();
         _claudeMonitor = new ClaudeUsageMonitor();
         _antigravityMonitor = new AntigravityUsageMonitor();
+        _externalMonitor = new ExternalProviderMonitor(enableNetworkPolling: enableMonitoring);
         _monitoringEnabled = enableMonitoring;
 
         _refreshTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -116,6 +124,7 @@ public partial class MainWindow : Window
         _localTokenMonitor.UsageUpdated += LocalTokenMonitor_UsageUpdated;
         _claudeMonitor.UsageUpdated += ClaudeMonitor_UsageUpdated;
         _antigravityMonitor.UsageUpdated += AntigravityMonitor_UsageUpdated;
+        _externalMonitor.UsageUpdated += ExternalMonitor_UsageUpdated;
         _trayIcon.ShowRequested += TrayIcon_ShowRequested;
         _trayIcon.RefreshRequested += TrayIcon_RefreshRequested;
         _trayIcon.UpdateRequested += TrayIcon_UpdateRequested;
@@ -187,6 +196,7 @@ public partial class MainWindow : Window
         _localTokenMonitor.Start();
         _claudeMonitor.Start();
         _antigravityMonitor.Start();
+        _externalMonitor.Start();
         _refreshTimer.Start();
         _clockTimer.Start();
         _updateTimer.Start();
@@ -302,10 +312,48 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ExternalMonitor_UsageUpdated(ExternalProviderSnapshot usage)
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(() => ApplyExternalProviderSnapshot(usage)));
+    }
+
+    internal void ApplyExternalProviderSnapshot(ExternalProviderSnapshot usage)
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        _externalSnapshots[usage.Provider] = usage;
+        if (TryMapExternalProvider(_activeProvider) == usage.Provider)
+        {
+            RenderExternalProvider(usage.Provider);
+        }
+    }
+
+    private static ExternalProviderId? TryMapExternalProvider(UsageProvider provider) => provider switch
+    {
+        UsageProvider.Grok => ExternalProviderId.Grok,
+        UsageProvider.DeepSeek => ExternalProviderId.DeepSeek,
+        UsageProvider.Kimi => ExternalProviderId.Kimi,
+        UsageProvider.Qwen => ExternalProviderId.Qwen,
+        UsageProvider.Glm => ExternalProviderId.Glm,
+        UsageProvider.SiliconFlow => ExternalProviderId.SiliconFlow,
+        _ => null,
+    };
+
     private async Task RefreshUsageAsync(bool userInitiated = false)
     {
         _claudeMonitor.Refresh(userInitiated);
         _antigravityMonitor.Refresh();
+        _externalMonitor.Refresh();
         _localTokenMonitor.Refresh();
         if (_refreshInProgress || _isClosing)
         {
@@ -399,7 +447,15 @@ public partial class MainWindow : Window
                 RenderAntigravity();
                 break;
             default:
-                RenderCodex();
+                if (TryMapExternalProvider(_activeProvider) is { } externalId)
+                {
+                    RenderExternalProvider(externalId);
+                }
+                else
+                {
+                    RenderCodex();
+                }
+
                 break;
         }
 
@@ -447,18 +503,21 @@ public partial class MainWindow : Window
 
     private void SetClaudeQuotaVisibility(ClaudeUsageSnapshot? snapshot)
     {
-        // Claude has no Luna bucket. Reuse the third card for the optional Fable point bucket so
-        // subscription windows and separately billed usage credits remain visually distinct.
+        // Claude has no Luna bucket. Reuse the third card for the optional Fable point bucket or
+        // the first scoped model bucket, and spill any additional scoped model buckets to extra rows.
         var account = snapshot?.Account;
         var showLoadingPlaceholders = account is null;
+        var hasThirdCard = snapshot?.FableLimit is not null ||
+                           (snapshot?.ScopedLimits.Any(limit => !limit.IsFable) ?? false);
         SetQuotaVisibility(
             showLoadingPlaceholders || account?.FiveHour is not null,
             showLoadingPlaceholders || account?.Weekly is not null,
-            showLuna: snapshot?.FableLimit is not null);
+            showLuna: hasThirdCard);
     }
 
     private void RenderCodex()
     {
+        ClearExtraQuotaCards();
         SetLunaCardCaption(FiveHourCaption, "card.fiveHour");
         SetLunaCardCaption(WeeklyCaption, "card.weekly");
         SetLunaCardCaption(LunaCaption, "card.lunaReserve");
@@ -567,6 +626,7 @@ public partial class MainWindow : Window
 
     private void RenderClaude()
     {
+        ClearExtraQuotaCards();
         SetLunaCardCaption(FiveHourCaption, "card.fiveHour");
         SetLunaCardCaption(WeeklyCaption, "card.weekly");
         LifetimeTokensCaption.Text = Loc.T("card.localLifetimeTokens");
@@ -576,9 +636,20 @@ public partial class MainWindow : Window
         var status = snapshot?.Status;
         SetClaudeQuotaVisibility(snapshot);
         var fable = snapshot?.FableLimit;
-        SetLunaCardCaption(
-            LunaCaption,
-            fable is null ? "card.lunaReserve" : "card.fableCredits");
+        var nonFableLimits = snapshot?.ScopedLimits.Where(limit => !limit.IsFable).ToArray() ?? [];
+        var thirdLimit = fable ?? nonFableLimits.FirstOrDefault();
+        if (fable is not null)
+        {
+            SetLunaCardCaption(LunaCaption, "card.fableCredits");
+        }
+        else if (thirdLimit is not null)
+        {
+            SetCardCaptionText(LunaCaption, LocalizeClaudeScopedLabel(thirdLimit));
+        }
+        else
+        {
+            SetLunaCardCaption(LunaCaption, "card.lunaReserve");
+        }
 
         ApplyRateWindow(
             account?.FiveHour,
@@ -593,13 +664,22 @@ public partial class MainWindow : Window
             WeeklyProgress,
             WeeklyResetText);
         ApplyRateWindow(
-            fable is null
+            thirdLimit is null
                 ? null
-                : new RateLimitWindow(fable.UsedPercent, fable.ResetsAt, 10_080),
+                : new RateLimitWindow(thirdLimit.UsedPercent, thirdLimit.ResetsAt, 10_080),
             LunaRemainingText,
             LunaUsedText,
             LunaProgress,
             LunaResetText);
+
+        var extraClaudeLimits = fable is not null
+            ? nonFableLimits
+            : nonFableLimits.Skip(1).ToArray();
+        if (extraClaudeLimits.Length > 0)
+        {
+            RenderExtraClaudeCards(extraClaudeLimits);
+        }
+
         ApplyClaudeExtraUsageCard(snapshot?.ExtraUsage, account?.Wallet);
         ApplyClaudeSecondaryCard(account, snapshot);
 
@@ -653,8 +733,7 @@ public partial class MainWindow : Window
         LifetimeTokensCaption.Text = Loc.T("card.localLifetimeTokens");
 
         var snapshot = _antigravitySnapshot;
-        IReadOnlyList<AntigravityModelUsage> models = (snapshot?.Models ?? Array.Empty<AntigravityModelUsage>())
-            .OrderByDescending(model => model.QuotaWindow is not null).ToArray();
+        var models = GetOrderedAntigravityModels(snapshot);
         if (models.Count > 0)
         {
             SetQuotaVisibility(
@@ -691,9 +770,19 @@ public partial class MainWindow : Window
                     LunaProgress,
                     LunaResetText);
             }
+
+            if (models.Count > 3)
+            {
+                RenderExtraAntigravityCards(models.Skip(3).ToArray());
+            }
+            else
+            {
+                ClearExtraQuotaCards();
+            }
         }
         else
         {
+            ClearExtraQuotaCards();
             var status = snapshot?.Status;
             SetQuotaVisibility(
                 showFiveHour: true,
@@ -793,6 +882,374 @@ public partial class MainWindow : Window
         RenderExpandedPanel();
     }
 
+    private void RenderExternalProvider(ExternalProviderId providerId)
+    {
+        var spec = ExternalProviderMonitor.GetSpec(providerId);
+        LifetimeTokensCaption.Text = Loc.T("card.localLifetimeTokens");
+
+        var snapshot = _externalSnapshots.GetValueOrDefault(providerId);
+        var models = (snapshot?.Models ?? Array.Empty<AntigravityModelUsage>())
+            .OrderByDescending(model => model.QuotaWindow is not null)
+            .ToArray();
+
+        if (models.Length > 0)
+        {
+            SetQuotaVisibility(
+                showFiveHour: models.Length >= 1,
+                showWeekly: models.Length >= 2,
+                showLuna: models.Length >= 3);
+
+            ApplyAntigravityModelCard(
+                models[0],
+                FiveHourCaption,
+                FiveHourRemainingText,
+                FiveHourUsedText,
+                FiveHourProgress,
+                FiveHourResetText);
+
+            if (models.Length >= 2)
+            {
+                ApplyAntigravityModelCard(
+                    models[1],
+                    WeeklyCaption,
+                    WeeklyRemainingText,
+                    WeeklyUsedText,
+                    WeeklyProgress,
+                    WeeklyResetText);
+            }
+
+            if (models.Length >= 3)
+            {
+                ApplyAntigravityModelCard(
+                    models[2],
+                    LunaCaption,
+                    LunaRemainingText,
+                    LunaUsedText,
+                    LunaProgress,
+                    LunaResetText);
+            }
+
+            if (models.Length > 3)
+            {
+                RenderExtraAntigravityCards(models.Skip(3).ToArray());
+            }
+            else
+            {
+                ClearExtraQuotaCards();
+            }
+        }
+        else
+        {
+            ClearExtraQuotaCards();
+            var defaultModels = spec.DefaultModels;
+            SetQuotaVisibility(
+                showFiveHour: defaultModels.Count >= 1,
+                showWeekly: defaultModels.Count >= 2,
+                showLuna: defaultModels.Count >= 3);
+
+            if (defaultModels.Count >= 1)
+            {
+                SetCardCaptionText(FiveHourCaption, defaultModels[0].DisplayName);
+                ApplyRateWindow(snapshot?.FiveHour, FiveHourRemainingText, FiveHourUsedText, FiveHourProgress, FiveHourResetText);
+            }
+
+            if (defaultModels.Count >= 2)
+            {
+                SetCardCaptionText(WeeklyCaption, defaultModels[1].DisplayName);
+                ApplyRateWindow(snapshot?.Weekly, WeeklyRemainingText, WeeklyUsedText, WeeklyProgress, WeeklyResetText);
+            }
+
+            if (defaultModels.Count >= 3)
+            {
+                SetCardCaptionText(LunaCaption, defaultModels[2].DisplayName);
+                ApplyRateWindow(null, LunaRemainingText, LunaUsedText, LunaProgress, LunaResetText);
+            }
+        }
+
+        if (snapshot?.Balance is { } balance)
+        {
+            BalanceCaption.Text = Loc.T("lbl.currentBalance");
+            BalanceText.FontSize = 16;
+            BalanceText.Text = FormatMoney(balance.TotalBalance, balance.Currency);
+        }
+        else
+        {
+            BalanceCaption.Text = Loc.T("lbl.currentModel");
+            var activeModel = snapshot?.ActiveModelName;
+            if (string.IsNullOrWhiteSpace(activeModel))
+            {
+                BalanceText.FontSize = 18;
+                BalanceText.Text = "--";
+            }
+            else
+            {
+                BalanceText.FontSize = 13;
+                BalanceText.Text = activeModel;
+            }
+        }
+
+        if (snapshot?.ContextUsedPercent is { } contextPercent)
+        {
+            ResetCreditsCaption.Text = Loc.T("card.context");
+            ResetCreditsText.FontSize = 18;
+            ResetCreditsText.Text = $"{contextPercent}%";
+        }
+        else if (!string.IsNullOrWhiteSpace(snapshot?.PlanType))
+        {
+            ResetCreditsCaption.Text = Loc.T("card.plan");
+            ResetCreditsText.FontSize = 14;
+            ResetCreditsText.Text = snapshot.PlanType;
+        }
+        else
+        {
+            ResetCreditsCaption.Text = Loc.T("card.modelCount");
+            ResetCreditsText.FontSize = 18;
+            var count = models.Length > 0 ? models.Length : spec.DefaultModels.Count;
+            ResetCreditsText.Text = Loc.T("unit.kinds", count);
+        }
+
+        var tokenStatus = snapshot switch
+        {
+            null => Loc.T("conn.readingProvider", spec.DisplayName),
+            { Balance: not null } => Loc.T("status.providerBalanceAndToken", spec.DisplayName),
+            { IsAvailable: true } => Loc.T("status.providerLocal", spec.DisplayName),
+            _ => Loc.T("status.providerNotConfigured", spec.DisplayName, spec.ApiKeyEnvVars[0]),
+        };
+        ApplyTokenUsageDisplay(snapshot?.TokenUsage, tokenStatus, tokenStatus);
+
+        if (snapshot is { IsAvailable: true })
+        {
+            var observedUsage = new[]
+                {
+                    snapshot.FiveHour?.UsedPercent,
+                    snapshot.Weekly?.UsedPercent,
+                }
+                .Concat(models.Select(model => model.QuotaWindow?.UsedPercent))
+                .Where(value => value.HasValue)
+                .Select(value => value!.Value)
+                .DefaultIfEmpty(0)
+                .Max();
+            StatusDot.Fill = snapshot.Error is null ? GetQuotaBrush(100 - observedUsage) : WarningBrush;
+            ConnectionText.Text = Loc.T("conn.providerLive", spec.DisplayName.ToUpperInvariant());
+            UpdatedText.Text = Loc.T("time.updated", TimeStamp(snapshot.FetchedAt));
+        }
+        else if (snapshot is not null)
+        {
+            StatusDot.Fill = WarningBrush;
+            ConnectionText.Text = Loc.T("status.providerNotConfigured", spec.DisplayName, spec.ApiKeyEnvVars[0]);
+            UpdatedText.Text = Loc.T("time.check", TimeStamp(snapshot.FetchedAt));
+        }
+        else
+        {
+            StatusDot.Fill = WarningBrush;
+            ConnectionText.Text = Loc.T("conn.readingProvider", spec.DisplayName);
+            UpdatedText.Text = string.Empty;
+        }
+
+        RenderExpandedPanel();
+    }
+
+    private static IReadOnlyList<AntigravityModelUsage> GetOrderedAntigravityModels(AntigravityUsageSnapshot? snapshot)
+    {
+        var baseModels = snapshot?.Models is { Count: > 0 } snapshotModels
+            ? snapshotModels
+            : AntigravityTranscriptParser.BuildModelUsage(
+                Array.Empty<AntigravityTokenRecord>(),
+                DateOnly.FromDateTime(DateTime.Now),
+                snapshot?.Status?.ModelQuotas);
+        return baseModels
+            .OrderByDescending(model => model.QuotaWindow is not null)
+            .ToArray();
+    }
+
+    private void ClearExtraQuotaCards()
+    {
+        _extraQuotaResetTargets.Clear();
+        ExtraQuotaRowsPanel.Children.Clear();
+        ExtraQuotaRowsPanel.Visibility = Visibility.Collapsed;
+        if (_extraQuotaRows != 0)
+        {
+            _extraQuotaRows = 0;
+            UpdateWindowHeight();
+        }
+    }
+
+    private void RenderExtraClaudeCards(IReadOnlyList<ClaudeScopedLimit> extraLimits)
+    {
+        var items = extraLimits
+            .Select(limit => new AntigravityModelUsage(
+                ModelName: limit.ModelName ?? limit.Key,
+                DisplayName: LocalizeClaudeScopedLabel(limit),
+                TotalTokens: 0,
+                InputTokens: 0,
+                CacheReadTokens: 0,
+                OutputTokens: 0,
+                TodayTokens: 0,
+                SevenDayTokens: 0,
+                TurnCount: 0,
+                SharePercent: 0,
+                LastUsedAt: DateTimeOffset.MinValue,
+                QuotaWindow: new RateLimitWindow(limit.UsedPercent, limit.ResetsAt, 10_080)))
+            .ToArray();
+        RenderExtraAntigravityCards(items);
+    }
+
+    private void RenderExtraAntigravityCards(IReadOnlyList<AntigravityModelUsage> extraModels)
+    {
+        _extraQuotaResetTargets.Clear();
+        ExtraQuotaRowsPanel.Children.Clear();
+
+        if (extraModels.Count == 0)
+        {
+            ExtraQuotaRowsPanel.Visibility = Visibility.Collapsed;
+            _extraQuotaRows = 0;
+            UpdateWindowHeight();
+            return;
+        }
+
+        ExtraQuotaRowsPanel.Visibility = Visibility.Visible;
+        var rowCount = (extraModels.Count + 2) / 3;
+        for (var rowIndex = 0; rowIndex < rowCount; rowIndex++)
+        {
+            var slice = extraModels.Skip(rowIndex * 3).Take(3).ToArray();
+            var rowGrid = new Grid
+            {
+                Height = QuotaRowHeight,
+                Margin = new Thickness(0, QuotaRowGap, 0, 0),
+            };
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = slice.Length >= 2 ? new GridLength(10) : new GridLength(0),
+            });
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = slice.Length >= 2 ? new GridLength(1, GridUnitType.Star) : new GridLength(0),
+            });
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = slice.Length >= 3 ? new GridLength(10) : new GridLength(0),
+            });
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition
+            {
+                Width = slice.Length >= 3 ? new GridLength(1, GridUnitType.Star) : new GridLength(0),
+            });
+
+            for (var cardIndex = 0; cardIndex < slice.Length; cardIndex++)
+            {
+                var (card, caption, remainingText, usedText, progress, resetText) = CreateExtraQuotaCard();
+                Grid.SetColumn(card, cardIndex * 2);
+                ApplyAntigravityModelCard(slice[cardIndex], caption, remainingText, usedText, progress, resetText);
+                if (slice[cardIndex].QuotaWindow is { } window)
+                {
+                    _extraQuotaResetTargets.Add((resetText, window));
+                }
+
+                rowGrid.Children.Add(card);
+            }
+
+            ExtraQuotaRowsPanel.Children.Add(rowGrid);
+        }
+
+        _extraQuotaRows = rowCount;
+        UpdateWindowHeight();
+    }
+
+    private (
+        Border Card,
+        TextBlock Caption,
+        TextBlock RemainingText,
+        TextBlock UsedText,
+        ProgressBar Progress,
+        TextBlock ResetText) CreateExtraQuotaCard()
+    {
+        var cardBrush = (Brush)FindResource("CardBrush");
+        var cardBorderBrush = (Brush)FindResource("CardBorderBrush");
+        var mutedTextBrush = (Brush)FindResource("MutedTextBrush");
+        var subtleTextBrush = (Brush)FindResource("SubtleTextBrush");
+        var progressStyle = (Style)FindResource("RoundedProgressStyle");
+
+        var caption = new TextBlock
+        {
+            VerticalAlignment = System.Windows.VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            Foreground = mutedTextBrush,
+        };
+        var remainingText = new TextBlock
+        {
+            Text = "--%",
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            VerticalAlignment = System.Windows.VerticalAlignment.Center,
+            FontSize = 20,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = CreateBrush(0xF5, 0xF7, 0xFA),
+        };
+        Grid.SetRow(remainingText, 1);
+
+        var headerGrid = new Grid();
+        headerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        headerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(28) });
+        headerGrid.Children.Add(caption);
+        headerGrid.Children.Add(remainingText);
+
+        var progress = new ProgressBar
+        {
+            Minimum = 0,
+            Maximum = 100,
+            Value = 0,
+            Style = progressStyle,
+        };
+        Grid.SetRow(progress, 2);
+
+        var usedText = new TextBlock
+        {
+            Text = "已用 --%",
+            FontSize = 9,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = subtleTextBrush,
+        };
+        var resetText = new TextBlock
+        {
+            Text = Loc.T("card.waitingData"),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            FontSize = 9,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextAlignment = TextAlignment.Right,
+            Foreground = subtleTextBrush,
+        };
+        Grid.SetColumn(resetText, 1);
+
+        var footerGrid = new Grid { ClipToBounds = true };
+        footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.1, GridUnitType.Star) });
+        footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.4, GridUnitType.Star) });
+        footerGrid.Children.Add(usedText);
+        footerGrid.Children.Add(resetText);
+        Grid.SetRow(footerGrid, 4);
+
+        var innerGrid = new Grid();
+        innerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        innerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
+        innerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(5) });
+        innerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
+        innerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(15) });
+        innerGrid.Children.Add(headerGrid);
+        innerGrid.Children.Add(progress);
+        innerGrid.Children.Add(footerGrid);
+
+        var card = new Border
+        {
+            Padding = new Thickness(11, 9, 11, 9),
+            Background = cardBrush,
+            BorderBrush = cardBorderBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Child = innerGrid,
+        };
+
+        return (card, caption, remainingText, usedText, progress, resetText);
+    }
+
     private void ApplyAntigravityModelCard(
         AntigravityModelUsage model,
         TextBlock caption,
@@ -883,7 +1340,12 @@ public partial class MainWindow : Window
 
     private static string FormatMoney(decimal amount, string currency)
     {
-        var symbol = currency.Equals("USD", StringComparison.OrdinalIgnoreCase) ? "$" : string.Empty;
+        var symbol = currency.Equals("USD", StringComparison.OrdinalIgnoreCase)
+            ? "$"
+            : currency.Equals("CNY", StringComparison.OrdinalIgnoreCase) ||
+              currency.Equals("RMB", StringComparison.OrdinalIgnoreCase)
+                ? "¥"
+                : string.Empty;
         return $"{symbol}{amount.ToString("0.##", CultureInfo.InvariantCulture)}";
     }
 
@@ -1156,9 +1618,42 @@ public partial class MainWindow : Window
 
     private void UpdateResetLabels()
     {
+        if (TryMapExternalProvider(_activeProvider) is { } externalId)
+        {
+            var extSnapshot = _externalSnapshots.GetValueOrDefault(externalId);
+            var extModels = extSnapshot?.Models ?? Array.Empty<AntigravityModelUsage>();
+            if (extModels.Count > 0)
+            {
+                if (extModels[0].QuotaWindow is { } firstWindow)
+                {
+                    SetCompactResetLabel(FiveHourResetText, firstWindow);
+                }
+                if (extModels.Count >= 2 && extModels[1].QuotaWindow is { } secondWindow)
+                {
+                    SetCompactResetLabel(WeeklyResetText, secondWindow);
+                }
+                if (extModels.Count >= 3 && extModels[2].QuotaWindow is { } thirdWindow)
+                {
+                    SetCompactResetLabel(LunaResetText, thirdWindow);
+                }
+                foreach (var (resetText, window) in _extraQuotaResetTargets)
+                {
+                    SetCompactResetLabel(resetText, window);
+                }
+            }
+            else if (extSnapshot is { FiveHour: not null } or { Weekly: not null })
+            {
+                SetCompactResetLabel(FiveHourResetText, extSnapshot.FiveHour);
+                SetCompactResetLabel(WeeklyResetText, extSnapshot.Weekly);
+                SetCompactResetLabel(LunaResetText, null);
+            }
+
+            return;
+        }
+
         if (_activeProvider == UsageProvider.Antigravity)
         {
-            var models = _antigravitySnapshot?.Models ?? Array.Empty<AntigravityModelUsage>();
+            var models = GetOrderedAntigravityModels(_antigravitySnapshot);
             if (models.Count > 0)
             {
                 if (models[0].QuotaWindow is { } firstWindow)
@@ -1172,6 +1667,10 @@ public partial class MainWindow : Window
                 if (models.Count >= 3 && models[2].QuotaWindow is { } thirdWindow)
                 {
                     SetCompactResetLabel(LunaResetText, thirdWindow);
+                }
+                foreach (var (resetText, window) in _extraQuotaResetTargets)
+                {
+                    SetCompactResetLabel(resetText, window);
                 }
             }
             else
@@ -1197,15 +1696,20 @@ public partial class MainWindow : Window
         {
             fiveHour = _claudeSnapshot?.FiveHour;
             weekly = _claudeSnapshot?.Weekly;
-            var fable = _claudeSnapshot?.FableLimit;
-            lunaReserve = fable is null
+            var third = _claudeSnapshot?.FableLimit ??
+                        _claudeSnapshot?.ScopedLimits.FirstOrDefault(limit => !limit.IsFable);
+            lunaReserve = third is null
                 ? null
-                : new RateLimitWindow(fable.UsedPercent, fable.ResetsAt, 10_080);
+                : new RateLimitWindow(third.UsedPercent, third.ResetsAt, 10_080);
         }
 
         SetCompactResetLabel(FiveHourResetText, fiveHour);
         SetCompactResetLabel(WeeklyResetText, weekly);
         SetCompactResetLabel(LunaResetText, lunaReserve);
+        foreach (var (resetText, window) in _extraQuotaResetTargets)
+        {
+            SetCompactResetLabel(resetText, window);
+        }
     }
 
     private static void SetCompactResetLabel(
@@ -1617,7 +2121,7 @@ public partial class MainWindow : Window
 
     private void ProviderTab_Checked(object sender, RoutedEventArgs e)
     {
-        if (sender is not RadioButton { Tag: string provider })
+        if (sender is not RadioButton { Tag: string provider } button)
         {
             return;
         }
@@ -1626,9 +2130,40 @@ public partial class MainWindow : Window
         {
             _ when provider.Equals("Claude", StringComparison.OrdinalIgnoreCase) => UsageProvider.Claude,
             _ when provider.Equals("Antigravity", StringComparison.OrdinalIgnoreCase) => UsageProvider.Antigravity,
+            _ when provider.Equals("Grok", StringComparison.OrdinalIgnoreCase) => UsageProvider.Grok,
+            _ when provider.Equals("DeepSeek", StringComparison.OrdinalIgnoreCase) => UsageProvider.DeepSeek,
+            _ when provider.Equals("Kimi", StringComparison.OrdinalIgnoreCase) => UsageProvider.Kimi,
+            _ when provider.Equals("Qwen", StringComparison.OrdinalIgnoreCase) => UsageProvider.Qwen,
+            _ when provider.Equals("Glm", StringComparison.OrdinalIgnoreCase) => UsageProvider.Glm,
+            _ when provider.Equals("SiliconFlow", StringComparison.OrdinalIgnoreCase) => UsageProvider.SiliconFlow,
             _ => UsageProvider.Codex,
         };
+        button.BringIntoView();
         RenderActiveProvider();
+    }
+
+    private void TabScrollLeftButton_Click(object sender, RoutedEventArgs e)
+    {
+        ProviderTabScrollViewer.ScrollToHorizontalOffset(
+            Math.Max(0, ProviderTabScrollViewer.HorizontalOffset - 140));
+    }
+
+    private void TabScrollRightButton_Click(object sender, RoutedEventArgs e)
+    {
+        ProviderTabScrollViewer.ScrollToHorizontalOffset(
+            ProviderTabScrollViewer.HorizontalOffset + 140);
+    }
+
+    private void ProviderTabScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Delta == 0)
+        {
+            return;
+        }
+
+        ProviderTabScrollViewer.ScrollToHorizontalOffset(
+            Math.Max(0, ProviderTabScrollViewer.HorizontalOffset - e.Delta * 0.6));
+        e.Handled = true;
     }
 
     /// <summary>
@@ -1701,11 +2236,18 @@ public partial class MainWindow : Window
 
         // The window has a fixed height, so grow it by exactly the row the panel occupies and keep
         // the card anchored where the user put it.
-        var height = expanded ? CollapsedHeight + ExpandPanelHeight : CollapsedHeight;
+        UpdateWindowHeight();
+        RenderExpandedPanel();
+    }
+
+    private void UpdateWindowHeight()
+    {
+        var expanded = _expandedPanel != ExpandedPanel.None;
+        var height = (expanded ? CollapsedHeight + ExpandPanelHeight : CollapsedHeight) +
+                     (_extraQuotaRows * ExtraQuotaRowStep);
         MinHeight = height;
         Height = height;
         ClampToWorkArea();
-        RenderExpandedPanel();
     }
 
     private void ClampToWorkArea()
@@ -1722,6 +2264,14 @@ public partial class MainWindow : Window
         switch (_expandedPanel)
         {
             case ExpandedPanel.Details:
+                if (TryMapExternalProvider(_activeProvider) is { } extId)
+                {
+                    DetailsItemsControl.ItemsSource = UsageDetailBuilder.BuildExternalProvider(
+                        _externalSnapshots.GetValueOrDefault(extId),
+                        extId);
+                    break;
+                }
+
                 DetailsItemsControl.ItemsSource = _activeProvider switch
                 {
                     UsageProvider.Claude => UsageDetailBuilder.BuildClaude(_claudeSnapshot),
@@ -1739,12 +2289,14 @@ public partial class MainWindow : Window
 
     private void RenderHistoryList()
     {
-        var providerName = _activeProvider switch
-        {
-            UsageProvider.Claude => "Claude",
-            UsageProvider.Antigravity => "Antigravity",
-            _ => "Codex",
-        };
+        var providerName = TryMapExternalProvider(_activeProvider) is { } extId
+            ? ExternalProviderMonitor.GetSpec(extId).DisplayName
+            : _activeProvider switch
+            {
+                UsageProvider.Claude => "Claude",
+                UsageProvider.Antigravity => "Antigravity",
+                _ => "Codex",
+            };
         HistoryTitleText.Text = Loc.T("history.title", providerName);
 
         if (_displayTokenUsage is not { } usage || usage.DailyUsage.Count == 0)
@@ -2087,6 +2639,7 @@ public partial class MainWindow : Window
         _localTokenMonitor.UsageUpdated -= LocalTokenMonitor_UsageUpdated;
         _claudeMonitor.UsageUpdated -= ClaudeMonitor_UsageUpdated;
         _antigravityMonitor.UsageUpdated -= AntigravityMonitor_UsageUpdated;
+        _externalMonitor.UsageUpdated -= ExternalMonitor_UsageUpdated;
         _trayIcon.ShowRequested -= TrayIcon_ShowRequested;
         _trayIcon.RefreshRequested -= TrayIcon_RefreshRequested;
         _trayIcon.UpdateRequested -= TrayIcon_UpdateRequested;
@@ -2097,18 +2650,22 @@ public partial class MainWindow : Window
         _localTokenMonitor.Dispose();
         _claudeMonitor.Dispose();
         _antigravityMonitor.Dispose();
+        _externalMonitor.Dispose();
         _trayIcon.Dispose();
         _updateService.Dispose();
         _lifetimeCancellation.Dispose();
         base.OnClosed(e);
     }
 
-    private string GetProviderBarColor() => _activeProvider switch
-    {
-        UsageProvider.Claude => "#D9906E",
-        UsageProvider.Antigravity => "#58A6FF",
-        _ => "#7EE787",
-    };
+    private string GetProviderBarColor() =>
+        TryMapExternalProvider(_activeProvider) is { } extId
+            ? ExternalProviderMonitor.GetSpec(extId).BarColor
+            : _activeProvider switch
+            {
+                UsageProvider.Claude => "#D9906E",
+                UsageProvider.Antigravity => "#58A6FF",
+                _ => "#7EE787",
+            };
 
     private static Brush CreateBrush(byte red, byte green, byte blue)
     {
@@ -2140,6 +2697,12 @@ public partial class MainWindow : Window
         Codex,
         Claude,
         Antigravity,
+        Grok,
+        DeepSeek,
+        Kimi,
+        Qwen,
+        Glm,
+        SiliconFlow,
     }
 
     private enum ExpandedPanel

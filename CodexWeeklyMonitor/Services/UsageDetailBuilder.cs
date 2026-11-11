@@ -298,6 +298,110 @@ public static class UsageDetailBuilder
         return sections.Count == 0 ? Single("Antigravity", Loc.T("lbl.status"), Loc.T("detail.noData")) : sections;
     }
 
+    public static IReadOnlyList<UsageDetailSection> BuildExternalProvider(
+        ExternalProviderSnapshot? snapshot,
+        ExternalProviderId providerId)
+    {
+        var spec = ExternalProviderMonitor.GetSpec(providerId);
+        if (snapshot is null)
+        {
+            return Single(spec.DisplayName, Loc.T("lbl.status"), Loc.T("detail.reading"));
+        }
+
+        if (!snapshot.IsAvailable)
+        {
+            return Single(
+                spec.DisplayName,
+                Loc.T("lbl.status"),
+                Loc.T("status.providerNotConfigured", spec.DisplayName, string.Join(" / ", spec.ApiKeyEnvVars)));
+        }
+
+        var sections = new List<UsageDetailSection>();
+        var account = new List<UsageDetailItem>();
+        Add(account, Loc.T("lbl.source"), snapshot.HasApiKey
+            ? Loc.T("source.official")
+            : snapshot.IsBridgeConfigured
+                ? Loc.T("source.statusBridge")
+                : Loc.T("source.localSession"));
+        Add(account, Loc.T("lbl.account"), snapshot.AccountName);
+        Add(account, Loc.T("lbl.plan"), snapshot.PlanType);
+        Add(account, Loc.T("lbl.currentModel"), snapshot.ActiveModelName);
+        if (snapshot.Session is { ContextTokens: > 0 } session)
+        {
+            Add(
+                account,
+                Loc.T("lbl.context"),
+                $"{session.ContextUsedPercent}% · {session.ContextTokens:N0} / {session.ContextWindow:N0}");
+        }
+        Add(account, Loc.T("lbl.updateTime"), Timestamp(snapshot.FetchedAt));
+        Add(account, Loc.T("lbl.status"), snapshot.Error ?? Loc.T("detail.normal"));
+        AddSection(sections, Loc.T("sec.account"), account);
+
+        if (snapshot.Balance is { } balance)
+        {
+            var balanceItems = new List<UsageDetailItem>();
+            Add(balanceItems, Loc.T("lbl.currentBalance"), FormatMoney(balance.TotalBalance, balance.Currency));
+            Add(balanceItems, Loc.T("lbl.grantedBalance"), FormatMoney(balance.GrantedBalance, balance.Currency));
+            Add(balanceItems, Loc.T("lbl.toppedUpBalance"), FormatMoney(balance.ToppedUpBalance, balance.Currency));
+            Add(balanceItems, Loc.T("lbl.periodCap"), FormatMoney(balance.MonthlyBudget, balance.Currency));
+            Add(balanceItems, Loc.T("lbl.available"), balance.IsAvailable ? Loc.T("val.yes") : Loc.T("val.no"));
+            AddSection(sections, Loc.T("sec.balance"), balanceItems);
+        }
+
+        if (snapshot.FiveHour is not null ||
+            snapshot.Weekly is not null ||
+            snapshot.Models.Any(model => model.QuotaWindow is not null))
+        {
+            var quota = new List<UsageDetailItem>();
+            AddWindow(quota, Loc.T("card.fiveHour"), snapshot.FiveHour);
+            AddWindow(quota, Loc.T("card.weekly"), snapshot.Weekly);
+            foreach (var model in snapshot.Models.Where(item => item.QuotaWindow is not null))
+            {
+                AddWindow(quota, model.DisplayName, model.QuotaWindow);
+            }
+
+            AddSection(sections, Loc.T("sec.quota"), quota);
+        }
+
+        var modelItems = new List<UsageDetailItem>();
+        foreach (var model in snapshot.Models)
+        {
+            var summary = Loc.T(
+                "model.usageRow",
+                FormatExactTokens(model.TotalTokens) ?? "0",
+                model.SharePercent,
+                Loc.T("unit.times", model.TurnCount));
+            var ioDetail = Loc.T(
+                "model.ioBreakdown",
+                TokenFormatter.Format(model.InputTokens),
+                TokenFormatter.Format(model.CacheReadTokens),
+                TokenFormatter.Format(model.OutputTokens));
+            var quotaNote = model.QuotaWindow is { } window
+                ? $" · {Loc.T("window.usedRemaining", window.UsedPercent, window.RemainingPercent)}"
+                : string.Empty;
+            Add(modelItems, model.DisplayName, $"{summary} ({ioDetail}){quotaNote}");
+        }
+
+        AddSection(sections, Loc.T("sec.modelUsage"), modelItems);
+
+        var usage = new List<UsageDetailItem>();
+        if (snapshot.TokenUsage is { } tokenUsage)
+        {
+            Add(usage, Loc.T("lbl.localLifetimeTokens"), FormatExactTokens(tokenUsage.LifetimeTokens));
+            Add(usage, Loc.T("lbl.peakDaily"), FormatExactTokens(tokenUsage.PeakDailyTokens));
+            Add(usage, Loc.T("card.modelCount"), Loc.T("unit.kinds", snapshot.Models.Count));
+            Add(usage, Loc.T("lbl.currentStreak"), FormatDays(tokenUsage.CurrentStreakDays));
+            Add(usage, Loc.T("lbl.longestStreak"), FormatDays(tokenUsage.LongestStreakDays));
+            Add(usage, Loc.T("lbl.historyDays"), Loc.T("unit.days", tokenUsage.DailyUsage.Count));
+        }
+
+        AddSection(sections, Loc.T("sec.usageStats"), usage);
+
+        return sections.Count == 0
+            ? Single(spec.DisplayName, Loc.T("lbl.status"), Loc.T("detail.noData"))
+            : sections;
+    }
+
     private static string Timestamp(DateTimeOffset value) =>
         value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
 
@@ -424,7 +528,12 @@ public static class UsageDetailBuilder
             return null;
         }
 
-        var symbol = currency.Equals("USD", StringComparison.OrdinalIgnoreCase) ? "$" : string.Empty;
+        var symbol = currency.Equals("USD", StringComparison.OrdinalIgnoreCase)
+            ? "$"
+            : currency.Equals("CNY", StringComparison.OrdinalIgnoreCase) ||
+              currency.Equals("RMB", StringComparison.OrdinalIgnoreCase)
+                ? "¥"
+                : string.Empty;
         return $"{symbol}{amount.Value.ToString("0.##", CultureInfo.InvariantCulture)}";
     }
 

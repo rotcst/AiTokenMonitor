@@ -3689,9 +3689,37 @@ RunSta("Antigravity：主窗口切换到 Antigravity 标签页并渲染多模型
         var sections = UsageDetailBuilder.BuildAntigravity(snapshot);
         Equal(true, sections.Any(section => section.Title == "模型用量" && section.Items.Count == 2));
 
-        // Switching back to Codex / Claude restores standard 5-hour and weekly card titles
+        // 5 models (e.g. Google Antigravity's 5 quota buckets) dynamically expand into a 2nd row
+        var fiveModelSnapshot = snapshot with
+        {
+            Models =
+            [
+                new AntigravityModelUsage("Gemini 4 Argon (High)", "Gemini 4 Argon (High)", 1_500_000, 200_000, 1_200_000, 100_000, 500_000, 1_500_000, 18, 75, now, new RateLimitWindow(57, now.AddDays(6), 10_080)),
+                new AntigravityModelUsage("Gemini 3.8 Flash", "Gemini 3.8 Flash", 0, 0, 0, 0, 0, 0, 0, 0, now, new RateLimitWindow(0, now.AddHours(5), 300)),
+                new AntigravityModelUsage("Claude Opus 5.5", "Claude Opus 5.5", 0, 0, 0, 0, 0, 0, 0, 0, now, new RateLimitWindow(0, now.AddHours(5), 300)),
+                new AntigravityModelUsage("Claude Sonnet 5.5", "Claude Sonnet 5.5", 0, 0, 0, 0, 0, 0, 0, 0, now, new RateLimitWindow(15, now.AddHours(5), 300)),
+                new AntigravityModelUsage("GPT-OSS 120B (Medium)", "GPT-OSS 120B (Medium)", 0, 0, 0, 0, 0, 0, 0, 0, now, new RateLimitWindow(0, now.AddHours(5), 300)),
+            ],
+        };
+        mainWindow.ApplyAntigravitySnapshot(fiveModelSnapshot);
+        mainWindow.UpdateLayout();
+
+        var extraRowsPanel = (StackPanel)mainWindow.FindName("ExtraQuotaRowsPanel");
+        Equal(Visibility.Visible, extraRowsPanel.Visibility);
+        Equal(1, extraRowsPanel.Children.Count);
+        var extraRowGrid = (Grid)extraRowsPanel.Children[0];
+        Equal(2, extraRowGrid.Children.Count);
+        var extraTexts = FindVisualChildren<TextBlock>(extraRowGrid).Select(item => item.Text).ToArray();
+        Equal(true, extraTexts.Contains("Claude Sonnet 5.5"));
+        Equal(true, extraTexts.Contains("85%"));
+        Equal(true, extraTexts.Contains("GPT-OSS 120B (Medium)"));
+        Equal(596d, mainWindow.Height);
+
+        // Switching back to Codex / Claude restores standard 5-hour and weekly card titles and collapses extra rows
         codexTab.IsChecked = true;
         mainWindow.UpdateLayout();
+        Equal(Visibility.Collapsed, extraRowsPanel.Visibility);
+        Equal(470d, mainWindow.Height);
         Equal("5 小时额度", ((TextBlock)mainWindow.FindName("FiveHourCaption")).Text);
         Equal("周额度", ((TextBlock)mainWindow.FindName("WeeklyCaption")).Text);
 
@@ -3699,6 +3727,192 @@ RunSta("Antigravity：主窗口切换到 Antigravity 标签页并渲染多模型
         mainWindow.UpdateLayout();
         Equal("5 小时额度", ((TextBlock)mainWindow.FindName("FiveHourCaption")).Text);
         Equal("周额度", ((TextBlock)mainWindow.FindName("WeeklyCaption")).Text);
+    }
+    finally
+    {
+        mainWindow.Close();
+    }
+});
+
+Run("ExternalProviderMonitor 解析 DeepSeek / Kimi / SiliconFlow / Grok 官方接口与会话记录", () =>
+{
+    using var dsDoc = JsonDocument.Parse(
+        """
+        {
+          "is_available": true,
+          "balance_infos": [
+            {
+              "currency": "CNY",
+              "total_balance": "42.50",
+              "granted_balance": "10.00",
+              "topped_up_balance": "32.50"
+            }
+          ]
+        }
+        """);
+    var dsBalance = ExternalProviderMonitor.ParseDeepSeekBalance(dsDoc.RootElement, monthlyBudget: 100m);
+    Equal(true, dsBalance is not null);
+    Equal("CNY", dsBalance!.Currency);
+    Equal(42.50m, dsBalance.TotalBalance);
+    Equal(10.00m, dsBalance.GrantedBalance);
+    Equal(32.50m, dsBalance.ToppedUpBalance);
+    Equal(43, dsBalance.RemainingBudgetPercent);
+
+    using var kimiDoc = JsonDocument.Parse(
+        """
+        {
+          "code": 0,
+          "data": {
+            "available_balance": 88.80,
+            "voucher_balance": 20.00,
+            "cash_balance": 68.80
+          }
+        }
+        """);
+    var kimiBalance = ExternalProviderMonitor.ParseKimiBalance(kimiDoc.RootElement);
+    Equal(true, kimiBalance is not null);
+    Equal("CNY", kimiBalance!.Currency);
+    Equal(88.80m, kimiBalance.TotalBalance);
+    Equal(20.00m, kimiBalance.GrantedBalance);
+    Equal(68.80m, kimiBalance.ToppedUpBalance);
+
+    using var sfDoc = JsonDocument.Parse(
+        """
+        {
+          "code": 20000,
+          "data": {
+            "name": "sf-dev",
+            "status": "normal",
+            "balance": "14.00",
+            "chargeBalance": "50.00",
+            "totalBalance": "64.00"
+          }
+        }
+        """);
+    var (sfBalance, sfName, sfStatus) = ExternalProviderMonitor.ParseSiliconFlowUserInfo(sfDoc.RootElement);
+    Equal("sf-dev", sfName);
+    Equal("normal", sfStatus);
+    Equal(true, sfBalance is not null);
+    Equal(64.00m, sfBalance!.TotalBalance);
+
+    using var grokDoc = JsonDocument.Parse(
+        """
+        {
+          "name": "prod-grok-key",
+          "team_id": "team-xai-1",
+          "api_key_blocked": false,
+          "api_key_disabled": false,
+          "team_blocked": false
+        }
+        """);
+    var (grokKeyName, grokPlan, grokActive) = ExternalProviderMonitor.ParseGrokApiKeyInfo(grokDoc.RootElement);
+    Equal("prod-grok-key", grokKeyName);
+    Equal("xAI API", grokPlan);
+    Equal(true, grokActive);
+
+    Equal(ExternalProviderId.DeepSeek, ExternalProviderMonitor.MatchProviderByModel("deepseek-chat"));
+    Equal(ExternalProviderId.DeepSeek, ExternalProviderMonitor.MatchProviderByModel("deepseek-reasoner"));
+    Equal(ExternalProviderId.Kimi, ExternalProviderMonitor.MatchProviderByModel("kimi-k2.5"));
+    Equal(ExternalProviderId.Kimi, ExternalProviderMonitor.MatchProviderByModel("moonshot-v1-128k"));
+    Equal(ExternalProviderId.Grok, ExternalProviderMonitor.MatchProviderByModel("grok-4"));
+    Equal(ExternalProviderId.Qwen, ExternalProviderMonitor.MatchProviderByModel("qwen3-max"));
+    Equal(ExternalProviderId.Glm, ExternalProviderMonitor.MatchProviderByModel("glm-5"));
+    Equal(ExternalProviderId.SiliconFlow, ExternalProviderMonitor.MatchProviderByModel("Pro/deepseek-ai/DeepSeek-V3"));
+});
+
+RunSta("MainWindow 支持切换 Grok / DeepSeek / Kimi / Qwen / GLM / SiliconFlow 多厂商标签与多行卡片", () =>
+{
+    var mainWindow = new MainWindow(null, enableMonitoring: false);
+    try
+    {
+        mainWindow.Show();
+        mainWindow.UpdateLayout();
+
+        var now = new DateTimeOffset(2026, 11, 11, 20, 30, 0, TimeSpan.FromHours(9));
+        var today = DateOnly.FromDateTime(now.LocalDateTime);
+
+        var deepseekSnapshot = new ExternalProviderSnapshot(
+            Provider: ExternalProviderId.DeepSeek,
+            Models:
+            [
+                new AntigravityModelUsage("deepseek-chat", "DeepSeek V3.2 (Chat)", 800_000, 100_000, 600_000, 100_000, 300_000, 800_000, 12, 80, now, null),
+                new AntigravityModelUsage("deepseek-reasoner", "DeepSeek R1 (Reasoner)", 200_000, 50_000, 100_000, 50_000, 100_000, 200_000, 4, 20, now, null),
+            ],
+            Balance: new ExternalProviderBalance("CNY", 56.80m, 10.00m, 46.80m),
+            FiveHour: null,
+            Weekly: null,
+            TokenUsage: new AccountTokenUsage(
+                LifetimeTokens: 1_000_000,
+                PeakDailyTokens: 400_000,
+                LongestRunningTurnSeconds: null,
+                CurrentStreakDays: 2,
+                LongestStreakDays: 2,
+                DailyUsage: [new DailyTokenUsage(today, 400_000)],
+                FetchedAt: now),
+            Session: new AntigravitySessionState("sess-ds", "DeepSeek V3.2 (Chat)", 64_000, 2_000, 16, now),
+            PlanType: "API",
+            AccountName: null,
+            Error: null,
+            IsAvailable: true,
+            HasApiKey: true,
+            IsBridgeConfigured: false,
+            FetchedAt: now);
+
+        mainWindow.ApplyExternalProviderSnapshot(deepseekSnapshot);
+
+        var deepseekTab = (RadioButton)mainWindow.FindName("DeepSeekProviderTab");
+        deepseekTab.IsChecked = true;
+        mainWindow.UpdateLayout();
+
+        Equal("DEEPSEEK实时监控中", ((TextBlock)mainWindow.FindName("ConnectionText")).Text);
+        Equal("DeepSeek V3.2 (Chat)", ((TextBlock)mainWindow.FindName("FiveHourCaption")).Text);
+        Equal("80万", ((TextBlock)mainWindow.FindName("FiveHourRemainingText")).Text);
+        Equal("DeepSeek R1 (Reasoner)", ((TextBlock)mainWindow.FindName("WeeklyCaption")).Text);
+        Equal("20万", ((TextBlock)mainWindow.FindName("WeeklyRemainingText")).Text);
+        Equal("当前余额", ((TextBlock)mainWindow.FindName("BalanceCaption")).Text);
+        Equal("¥56.8", ((TextBlock)mainWindow.FindName("BalanceText")).Text);
+        Equal("上下文占用", ((TextBlock)mainWindow.FindName("ResetCreditsCaption")).Text);
+        Equal("32%", ((TextBlock)mainWindow.FindName("ResetCreditsText")).Text);
+
+        var dsSections = UsageDetailBuilder.BuildExternalProvider(deepseekSnapshot, ExternalProviderId.DeepSeek);
+        Equal(true, dsSections.Any(section => section.Title == "余额" && section.Items.Any(item => item.Value == "¥56.8")));
+
+        // Grok with 4 models expands to 2 rows (596px height)
+        var grokSnapshot = new ExternalProviderSnapshot(
+            Provider: ExternalProviderId.Grok,
+            Models:
+            [
+                new AntigravityModelUsage("grok-4", "Grok 4", 0, 0, 0, 0, 0, 0, 0, 0, now, new RateLimitWindow(20, now.AddHours(2), 120)),
+                new AntigravityModelUsage("grok-4-fast", "Grok 4 Fast", 0, 0, 0, 0, 0, 0, 0, 0, now, new RateLimitWindow(10, now.AddHours(2), 120)),
+                new AntigravityModelUsage("grok-3", "Grok 3", 0, 0, 0, 0, 0, 0, 0, 0, now, new RateLimitWindow(5, now.AddHours(2), 120)),
+                new AntigravityModelUsage("grok-3-mini", "Grok 3 Mini", 0, 0, 0, 0, 0, 0, 0, 0, now, new RateLimitWindow(0, now.AddHours(2), 120)),
+            ],
+            Balance: null,
+            FiveHour: null,
+            Weekly: null,
+            TokenUsage: null,
+            Session: null,
+            PlanType: "SuperGrok",
+            AccountName: "xai-user",
+            Error: null,
+            IsAvailable: true,
+            HasApiKey: true,
+            IsBridgeConfigured: true,
+            FetchedAt: now);
+
+        mainWindow.ApplyExternalProviderSnapshot(grokSnapshot);
+        var grokTab = (RadioButton)mainWindow.FindName("GrokProviderTab");
+        grokTab.IsChecked = true;
+        mainWindow.UpdateLayout();
+
+        Equal("GROK实时监控中", ((TextBlock)mainWindow.FindName("ConnectionText")).Text);
+        Equal("Grok 4", ((TextBlock)mainWindow.FindName("FiveHourCaption")).Text);
+        Equal("80%", ((TextBlock)mainWindow.FindName("FiveHourRemainingText")).Text);
+        Equal(596d, mainWindow.Height);
+        var extraRowsPanel = (StackPanel)mainWindow.FindName("ExtraQuotaRowsPanel");
+        Equal(Visibility.Visible, extraRowsPanel.Visibility);
+        var extraTexts = FindVisualChildren<TextBlock>(extraRowsPanel).Select(item => item.Text).ToArray();
+        Equal(true, extraTexts.Contains("Grok 3 Mini"));
     }
     finally
     {

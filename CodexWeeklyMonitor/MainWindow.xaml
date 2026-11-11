@@ -151,6 +151,8 @@
 
         <Style x:Key="ProviderTabStyle" TargetType="{x:Type RadioButton}">
             <Setter Property="Height" Value="26" />
+            <Setter Property="MinWidth" Value="84" />
+            <Setter Property="Padding" Value="10,0" />
             <Setter Property="Margin" Value="2,0" />
             <Setter Property="Foreground" Value="#778493" />
             <Setter Property="Background" Value="Transparent" />
@@ -163,6 +165,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type RadioButton}">
                         <Border x:Name="TabChrome"
+                                Padding="{TemplateBinding Padding}"
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
@@ -274,7 +277,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="30" />
                     <RowDefinition Height="10" />
-                    <RowDefinition Height="116" />
+                    <RowDefinition x:Name="QuotaRow" Height="Auto" />
                     <RowDefinition Height="10" />
                     <RowDefinition Height="48" />
                     <RowDefinition Height="12" />
@@ -371,14 +374,15 @@
                     </StackPanel>
                 </Grid>
 
-                <Grid Grid.Row="2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition x:Name="FiveHourColumn" Width="*" />
-                        <ColumnDefinition x:Name="FiveHourGapColumn" Width="10" />
-                        <ColumnDefinition x:Name="WeeklyColumn" Width="*" />
-                        <ColumnDefinition x:Name="LunaGapColumn" Width="10" />
-                        <ColumnDefinition x:Name="LunaColumn" Width="*" />
-                    </Grid.ColumnDefinitions>
+                <StackPanel x:Name="QuotaRowsPanel" Grid.Row="2">
+                    <Grid Height="116">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="FiveHourColumn" Width="*" />
+                            <ColumnDefinition x:Name="FiveHourGapColumn" Width="10" />
+                            <ColumnDefinition x:Name="WeeklyColumn" Width="*" />
+                            <ColumnDefinition x:Name="LunaGapColumn" Width="10" />
+                            <ColumnDefinition x:Name="LunaColumn" Width="*" />
+                        </Grid.ColumnDefinitions>
 
                     <Border x:Name="FiveHourQuotaCard"
                             Grid.Column="0"
@@ -575,7 +579,9 @@
                             </Grid>
                         </Grid>
                     </Border>
-                </Grid>
+                    </Grid>
+                    <StackPanel x:Name="ExtraQuotaRowsPanel" Visibility="Collapsed" />
+                </StackPanel>
 
                 <Grid Grid.Row="4">
                     <Grid.ColumnDefinitions>
@@ -918,60 +924,193 @@
                         BorderBrush="{StaticResource CardBorderBrush}"
                         BorderThickness="1"
                         CornerRadius="9">
-                    <UniformGrid Rows="1" Columns="3">
-                        <RadioButton x:Name="CodexProviderTab"
-                                     GroupName="UsageProvider"
-                                     Tag="Codex"
-                                     IsChecked="True"
-                                     Style="{StaticResource ProviderTabStyle}"
-                                     AutomationProperties.Name="{loc:Str tab.codex}"
-                                     Checked="ProviderTab_Checked">
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="5"
-                                         Height="5"
-                                         Margin="0,0,7,0"
-                                         VerticalAlignment="Center"
-                                         Fill="#7EE787" />
-                                <TextBlock Text="Codex"
-                                           FontSize="10.5"
-                                           FontWeight="SemiBold" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="20" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="TabScrollLeftButton"
+                                Grid.Column="0"
+                                Width="18"
+                                Height="26"
+                                Margin="0"
+                                Style="{StaticResource HeaderButtonStyle}"
+                                Click="TabScrollLeftButton_Click">
+                            <TextBlock Text="&#xE76B;" FontSize="9" Style="{StaticResource HeaderGlyphStyle}" />
+                        </Button>
+                        <ScrollViewer x:Name="ProviderTabScrollViewer"
+                                      Grid.Column="1"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      PreviewMouseWheel="ProviderTabScrollViewer_PreviewMouseWheel">
+                            <StackPanel x:Name="ProviderTabStrip" Orientation="Horizontal">
+                                <RadioButton x:Name="CodexProviderTab"
+                                             GroupName="UsageProvider"
+                                             Tag="Codex"
+                                             IsChecked="True"
+                                             Style="{StaticResource ProviderTabStyle}"
+                                             AutomationProperties.Name="{loc:Str tab.codex}"
+                                             Checked="ProviderTab_Checked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="5"
+                                                 Height="5"
+                                                 Margin="0,0,6,0"
+                                                 VerticalAlignment="Center"
+                                                 Fill="#7EE787" />
+                                        <TextBlock Text="Codex"
+                                                   FontSize="10.5"
+                                                   FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="ClaudeProviderTab"
+                                             GroupName="UsageProvider"
+                                             Tag="Claude"
+                                             Style="{StaticResource ProviderTabStyle}"
+                                             AutomationProperties.Name="{loc:Str tab.claude}"
+                                             Checked="ProviderTab_Checked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="5"
+                                                 Height="5"
+                                                 Margin="0,0,6,0"
+                                                 VerticalAlignment="Center"
+                                                 Fill="#D9906E" />
+                                        <TextBlock Text="Claude"
+                                                   FontSize="10.5"
+                                                   FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="AntigravityProviderTab"
+                                             GroupName="UsageProvider"
+                                             Tag="Antigravity"
+                                             Style="{StaticResource ProviderTabStyle}"
+                                             AutomationProperties.Name="{loc:Str tab.antigravity}"
+                                             Checked="ProviderTab_Checked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="5"
+                                                 Height="5"
+                                                 Margin="0,0,6,0"
+                                                 VerticalAlignment="Center"
+                                                 Fill="#58A6FF" />
+                                        <TextBlock Text="Antigravity"
+                                                   FontSize="10.5"
+                                                   FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="GrokProviderTab"
+                                             GroupName="UsageProvider"
+                                             Tag="Grok"
+                                             Style="{StaticResource ProviderTabStyle}"
+                                             AutomationProperties.Name="{loc:Str tab.grok}"
+                                             Checked="ProviderTab_Checked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="5"
+                                                 Height="5"
+                                                 Margin="0,0,6,0"
+                                                 VerticalAlignment="Center"
+                                                 Fill="#E2E8F0" />
+                                        <TextBlock Text="Grok"
+                                                   FontSize="10.5"
+                                                   FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="DeepSeekProviderTab"
+                                             GroupName="UsageProvider"
+                                             Tag="DeepSeek"
+                                             Style="{StaticResource ProviderTabStyle}"
+                                             AutomationProperties.Name="{loc:Str tab.deepseek}"
+                                             Checked="ProviderTab_Checked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="5"
+                                                 Height="5"
+                                                 Margin="0,0,6,0"
+                                                 VerticalAlignment="Center"
+                                                 Fill="#4D6BFE" />
+                                        <TextBlock Text="DeepSeek"
+                                                   FontSize="10.5"
+                                                   FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="KimiProviderTab"
+                                             GroupName="UsageProvider"
+                                             Tag="Kimi"
+                                             Style="{StaticResource ProviderTabStyle}"
+                                             AutomationProperties.Name="{loc:Str tab.kimi}"
+                                             Checked="ProviderTab_Checked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="5"
+                                                 Height="5"
+                                                 Margin="0,0,6,0"
+                                                 VerticalAlignment="Center"
+                                                 Fill="#A78BFA" />
+                                        <TextBlock Text="Kimi"
+                                                   FontSize="10.5"
+                                                   FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="QwenProviderTab"
+                                             GroupName="UsageProvider"
+                                             Tag="Qwen"
+                                             Style="{StaticResource ProviderTabStyle}"
+                                             AutomationProperties.Name="{loc:Str tab.qwen}"
+                                             Checked="ProviderTab_Checked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="5"
+                                                 Height="5"
+                                                 Margin="0,0,6,0"
+                                                 VerticalAlignment="Center"
+                                                 Fill="#818CF8" />
+                                        <TextBlock Text="Qwen"
+                                                   FontSize="10.5"
+                                                   FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="GlmProviderTab"
+                                             GroupName="UsageProvider"
+                                             Tag="Glm"
+                                             Style="{StaticResource ProviderTabStyle}"
+                                             AutomationProperties.Name="{loc:Str tab.glm}"
+                                             Checked="ProviderTab_Checked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="5"
+                                                 Height="5"
+                                                 Margin="0,0,6,0"
+                                                 VerticalAlignment="Center"
+                                                 Fill="#38BDF8" />
+                                        <TextBlock Text="GLM"
+                                                   FontSize="10.5"
+                                                   FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="SiliconFlowProviderTab"
+                                             GroupName="UsageProvider"
+                                             Tag="SiliconFlow"
+                                             Style="{StaticResource ProviderTabStyle}"
+                                             AutomationProperties.Name="{loc:Str tab.siliconflow}"
+                                             Checked="ProviderTab_Checked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="5"
+                                                 Height="5"
+                                                 Margin="0,0,6,0"
+                                                 VerticalAlignment="Center"
+                                                 Fill="#F472B6" />
+                                        <TextBlock Text="SiliconFlow"
+                                                   FontSize="10.5"
+                                                   FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </RadioButton>
                             </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="ClaudeProviderTab"
-                                     GroupName="UsageProvider"
-                                     Tag="Claude"
-                                     Style="{StaticResource ProviderTabStyle}"
-                                     AutomationProperties.Name="{loc:Str tab.claude}"
-                                     Checked="ProviderTab_Checked">
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="5"
-                                         Height="5"
-                                         Margin="0,0,7,0"
-                                         VerticalAlignment="Center"
-                                         Fill="#D9906E" />
-                                <TextBlock Text="Claude"
-                                           FontSize="10.5"
-                                           FontWeight="SemiBold" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="AntigravityProviderTab"
-                                     GroupName="UsageProvider"
-                                     Tag="Antigravity"
-                                     Style="{StaticResource ProviderTabStyle}"
-                                     AutomationProperties.Name="{loc:Str tab.antigravity}"
-                                     Checked="ProviderTab_Checked">
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="5"
-                                         Height="5"
-                                         Margin="0,0,7,0"
-                                         VerticalAlignment="Center"
-                                         Fill="#58A6FF" />
-                                <TextBlock Text="Antigravity"
-                                           FontSize="10.5"
-                                           FontWeight="SemiBold" />
-                            </StackPanel>
-                        </RadioButton>
-                    </UniformGrid>
+                        </ScrollViewer>
+                        <Button x:Name="TabScrollRightButton"
+                                Grid.Column="2"
+                                Width="18"
+                                Height="26"
+                                Margin="0"
+                                Style="{StaticResource HeaderButtonStyle}"
+                                Click="TabScrollRightButton_Click">
+                            <TextBlock Text="&#xE76C;" FontSize="9" Style="{StaticResource HeaderGlyphStyle}" />
+                        </Button>
+                    </Grid>
                 </Border>
             </Grid>
         </Border>
