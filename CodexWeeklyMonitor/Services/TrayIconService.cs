@@ -27,6 +27,8 @@ internal interface ITrayIconService : IDisposable
     string ToolTipText { get; set; }
 
     void UpdateMenuStatus(string codexStatus, string claudeStatus);
+
+    void UpdateMenuStatus(IReadOnlyList<string> statusLines);
 }
 
 /// <summary>
@@ -69,8 +71,8 @@ internal sealed class TrayIconService : ITrayIconService
     private readonly Forms.ToolStripMenuItem _showItem;
     private readonly Forms.ToolStripMenuItem _refreshItem;
     private readonly Forms.ToolStripMenuItem _updateItem;
-    private readonly Forms.ToolStripMenuItem _codexStatusItem;
-    private readonly Forms.ToolStripMenuItem _claudeStatusItem;
+    private readonly List<Forms.ToolStripMenuItem> _statusItems = new();
+    private readonly Forms.ToolStripSeparator _statusSeparator;
     private readonly Forms.ToolStripMenuItem _languageItem;
     private readonly Forms.ToolStripMenuItem _startupItem;
     private readonly Forms.ToolStripMenuItem _exitItem;
@@ -97,8 +99,11 @@ internal sealed class TrayIconService : ITrayIconService
         SetGlyph(_refreshItem, IconRefresh);
         _updateItem = CreateMenuItem(() => UpdateRequested?.Invoke(this, EventArgs.Empty));
         SetGlyph(_updateItem, IconUpdate);
-        _codexStatusItem = CreateStatusItem();
-        _claudeStatusItem = CreateStatusItem();
+        var codexItem = CreateStatusItem();
+        var claudeItem = CreateStatusItem();
+        _statusItems.Add(codexItem);
+        _statusItems.Add(claudeItem);
+        _statusSeparator = CreateSeparator();
         _languageItem = new Forms.ToolStripMenuItem();
         SetGlyph(_languageItem, IconGlobe);
         _startupItem = CreateMenuItem(ToggleStartup);
@@ -129,9 +134,9 @@ internal sealed class TrayIconService : ITrayIconService
         };
         _menu.Items.AddRange(
         [
-            _codexStatusItem,
-            _claudeStatusItem,
-            CreateSeparator(),
+            codexItem,
+            claudeItem,
+            _statusSeparator,
             _showItem,
             _refreshItem,
             CreateSeparator(),
@@ -194,8 +199,53 @@ internal sealed class TrayIconService : ITrayIconService
 
     public void UpdateMenuStatus(string codexStatus, string claudeStatus)
     {
-        _codexStatusItem.Text = codexStatus;
-        _claudeStatusItem.Text = claudeStatus;
+        UpdateMenuStatus([codexStatus, claudeStatus]);
+    }
+
+    public void UpdateMenuStatus(IReadOnlyList<string> statusLines)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _menu.SuspendLayout();
+        try
+        {
+            while (_statusItems.Count > statusLines.Count)
+            {
+                var last = _statusItems[^1];
+                _statusItems.RemoveAt(_statusItems.Count - 1);
+                _menu.Items.Remove(last);
+                last.Dispose();
+            }
+
+            while (_statusItems.Count < statusLines.Count)
+            {
+                var item = CreateStatusItem();
+                _statusItems.Add(item);
+                var insertIndex = _menu.Items.IndexOf(_statusSeparator);
+                if (insertIndex < 0)
+                {
+                    _menu.Items.Add(item);
+                }
+                else
+                {
+                    _menu.Items.Insert(insertIndex, item);
+                }
+            }
+
+            for (var i = 0; i < statusLines.Count; i++)
+            {
+                _statusItems[i].Text = statusLines[i];
+            }
+
+            _statusSeparator.Visible = statusLines.Count > 0;
+        }
+        finally
+        {
+            _menu.ResumeLayout();
+        }
     }
 
     /// <summary>Tags an item for the renderer and gives it the Image slot that renderer needs.</summary>

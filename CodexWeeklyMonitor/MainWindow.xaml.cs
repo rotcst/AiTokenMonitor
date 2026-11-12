@@ -337,6 +337,7 @@ public partial class MainWindow : Window
         }
 
         _antigravitySnapshot = usage;
+        UpdateTrayTooltip();
         if (_activeProvider == UsageProvider.Antigravity)
         {
             RenderAntigravity();
@@ -368,6 +369,7 @@ public partial class MainWindow : Window
         }
 
         _externalSnapshots[usage.Provider] = usage;
+        UpdateTrayTooltip();
         if (TryMapExternalProvider(_activeProvider) == usage.Provider)
         {
             RenderExternalProvider(usage.Provider);
@@ -451,7 +453,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ApplySnapshot(CodexUsageSnapshot snapshot)
+    internal void ApplySnapshot(CodexUsageSnapshot snapshot)
     {
         if (_isClosing)
         {
@@ -1734,16 +1736,171 @@ public partial class MainWindow : Window
         var codexWeekly = FormatWeeklyTooltip(_currentSnapshot?.RateLimits.Weekly, codexIsStale);
         var claudeWeekly = FormatWeeklyTooltip(_claudeSnapshot?.Weekly);
         _trayIcon.ToolTipText = $"Codex周剩余:{codexWeekly} | Claude周剩余:{claudeWeekly}";
-        _trayIcon.UpdateMenuStatus(
-            FormatTrayStatusLine(
-                "Codex",
-                _currentSnapshot?.Detail?.PlanType,
+
+        var lines = new List<string>();
+
+        // 1. Codex
+        if (_currentSnapshot is not null || _codexError is not null)
+        {
+            var head = string.IsNullOrWhiteSpace(_currentSnapshot?.Detail?.PlanType)
+                ? "Codex"
+                : $"Codex · {FormatPlanName(_currentSnapshot.Detail.PlanType)}";
+            lines.Add(FormatDualTrayStatusLine(
+                head,
+                _currentSnapshot?.RateLimits.FiveHour,
                 _currentSnapshot?.RateLimits.Weekly,
-                codexIsStale),
-            FormatTrayStatusLine(
-                "Claude",
-                _claudeSnapshot?.Account?.SubscriptionType,
-                _claudeSnapshot?.Weekly));
+                codexIsStale));
+
+            if (_currentSnapshot?.RateLimits.LunaReserve is { } luna)
+            {
+                var lunaHead = $"Codex · {Loc.T("card.lunaReserve")}";
+                lines.Add(FormatDualTrayStatusLine(
+                    lunaHead,
+                    luna.DurationMinutes <= 720 ? luna : null,
+                    luna.DurationMinutes > 720 ? luna : null,
+                    codexIsStale));
+            }
+        }
+        else
+        {
+            lines.Add(FormatDualTrayStatusLine("Codex", null, null));
+        }
+
+        // 2. Claude
+        if (_claudeSnapshot is not null)
+        {
+            var head = string.IsNullOrWhiteSpace(_claudeSnapshot?.Account?.SubscriptionType)
+                ? "Claude"
+                : $"Claude · {FormatPlanName(_claudeSnapshot.Account.SubscriptionType)}";
+            lines.Add(FormatDualTrayStatusLine(
+                head,
+                _claudeSnapshot?.Account?.FiveHour ?? _claudeSnapshot?.FiveHour,
+                _claudeSnapshot?.Account?.Weekly ?? _claudeSnapshot?.Weekly));
+
+            if (_claudeSnapshot?.Account?.ScopedLimits is { Count: > 0 } scopedLimits)
+            {
+                foreach (var limit in scopedLimits)
+                {
+                    var label = LocalizeClaudeScopedLabel(limit);
+                    var window = new RateLimitWindow(limit.UsedPercent, limit.ResetsAt, 10_080);
+                    lines.Add(FormatDualTrayStatusLine($"Claude · {label}", null, window));
+                }
+            }
+        }
+        else
+        {
+            lines.Add(FormatDualTrayStatusLine("Claude", null, null));
+        }
+
+        // 3. Antigravity
+        var agModels = GetOrderedAntigravityModels(_antigravitySnapshot);
+        var modelsWithQuota = agModels
+            .Where(m => m.HasQuota)
+            .ToList();
+
+        if (modelsWithQuota.Count > 0)
+        {
+            foreach (var model in modelsWithQuota)
+            {
+                lines.Add(FormatDualTrayStatusLine(
+                    $"Antigravity · {model.DisplayName}",
+                    model.FiveHourWindow,
+                    model.WeeklyWindow));
+            }
+        }
+        else if (_antigravitySnapshot?.Status?.FiveHour is not null || _antigravitySnapshot?.Status?.Weekly is not null)
+        {
+            var head = string.IsNullOrWhiteSpace(_antigravitySnapshot.Status.PlanType)
+                ? "Antigravity"
+                : $"Antigravity · {FormatPlanName(_antigravitySnapshot.Status.PlanType)}";
+            lines.Add(FormatDualTrayStatusLine(
+                head,
+                _antigravitySnapshot.Status.FiveHour,
+                _antigravitySnapshot.Status.Weekly));
+        }
+        else if (_antigravitySnapshot is not null)
+        {
+            lines.Add(FormatDualTrayStatusLine("Antigravity", null, null));
+        }
+
+        // 4. External Providers (Grok, DeepSeek, etc.)
+        foreach (var (providerId, extSnapshot) in _externalSnapshots)
+        {
+            if (extSnapshot is null)
+            {
+                continue;
+            }
+
+            var spec = ExternalProviderMonitor.GetSpec(providerId);
+            var extModelsWithQuota = extSnapshot.Models
+                .Where(m => m.HasQuota)
+                .ToList();
+
+            if (extModelsWithQuota.Count > 0)
+            {
+                foreach (var model in extModelsWithQuota)
+                {
+                    lines.Add(FormatDualTrayStatusLine(
+                        $"{spec.DisplayName} · {model.DisplayName}",
+                        model.FiveHourWindow,
+                        model.WeeklyWindow));
+                }
+            }
+            else if (extSnapshot.FiveHour is not null || extSnapshot.Weekly is not null)
+            {
+                var head = string.IsNullOrWhiteSpace(extSnapshot.PlanType)
+                    ? spec.DisplayName
+                    : $"{spec.DisplayName} · {FormatPlanName(extSnapshot.PlanType)}";
+                lines.Add(FormatDualTrayStatusLine(head, extSnapshot.FiveHour, extSnapshot.Weekly));
+            }
+            else if (extSnapshot.Balance is { } balance)
+            {
+                if (balance.RemainingBudgetPercent is { } budgetPct)
+                {
+                    lines.Add(Loc.T("tray.budgetRemaining", spec.DisplayName, budgetPct));
+                }
+                else
+                {
+                    lines.Add(Loc.T("tray.balanceRemaining", spec.DisplayName, balance.Currency, balance.TotalBalance.ToString("F2", CultureInfo.InvariantCulture)));
+                }
+            }
+        }
+
+        _trayIcon.UpdateMenuStatus(lines);
+    }
+
+    internal static string FormatDualTrayStatusLine(
+        string head,
+        RateLimitWindow? fiveHour,
+        RateLimitWindow? weekly,
+        bool isStale = false)
+    {
+        if (fiveHour is not null && weekly is not null)
+        {
+            return Loc.T(
+                isStale ? "tray.dualRemainingStale" : "tray.dualRemaining",
+                head,
+                fiveHour.RemainingPercent,
+                weekly.RemainingPercent);
+        }
+
+        if (fiveHour is not null)
+        {
+            return Loc.T(
+                isStale ? "tray.fiveHourRemainingStale" : "tray.fiveHourRemaining",
+                head,
+                fiveHour.RemainingPercent);
+        }
+
+        if (weekly is not null)
+        {
+            return Loc.T(
+                isStale ? "tray.weeklyRemainingStale" : "tray.weeklyRemaining",
+                head,
+                weekly.RemainingPercent);
+        }
+
+        return Loc.T("tray.quotaUnknown", head);
     }
 
     /// <summary>Mirrors the Claude tray menu's "plan / usage" block for one provider.</summary>

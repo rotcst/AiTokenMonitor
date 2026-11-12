@@ -182,9 +182,16 @@ internal static class Strings
         ["gauge.switchHint"] = ["单击任一侧循环切换额度窗口或模型，右键选择该侧的监控；拖动可移动", "Click either side to cycle quota windows or models; right-click to choose its monitor; drag to move", "각 측면을 클릭해 한도 또는 모델을 전환하고 우클릭해 모니터를 선택합니다. 드래그해 이동"],
 
         // Tray status lines
+        ["tray.quotaUnknown"] = ["{0}：额度未知", "{0}: quota unknown", "{0}: 한도 미상"],
         ["tray.weeklyUnknown"] = ["{0}：周额度未知", "{0}: weekly unknown", "{0}: 주간 한도 미상"],
         ["tray.weeklyRemaining"] = ["{0}：周额度剩余 {1}%", "{0}: weekly {1}% remaining", "{0}: 주간 {1}% 남음"],
         ["tray.weeklyRemainingStale"] = ["{0}：周额度约剩余 {1}%（旧数据）", "{0}: weekly ~{1}% remaining (stale)", "{0}: 주간 약 {1}% 남음 (이전 데이터)"],
+        ["tray.fiveHourRemaining"] = ["{0}：5H剩余 {1}%", "{0}: 5h {1}% remaining", "{0}: 5시간 {1}% 남음"],
+        ["tray.fiveHourRemainingStale"] = ["{0}：5H约剩余 {1}%（旧数据）", "{0}: 5h ~{1}% remaining (stale)", "{0}: 5시간 약 {1}% 남음 (이전 데이터)"],
+        ["tray.dualRemaining"] = ["{0}：5H剩余 {1}% · 周额度剩余 {2}%", "{0}: 5h {1}% · weekly {2}%", "{0}: 5시간 {1}% · 주간 {2}%"],
+        ["tray.dualRemainingStale"] = ["{0}：5H约剩余 {1}% · 周约剩余 {2}%（旧数据）", "{0}: 5h ~{1}% · weekly ~{2}% (stale)", "{0}: 5시간 약 {1}% · 주간 약 {2}% (이전 데이터)"],
+        ["tray.budgetRemaining"] = ["{0}：预算剩余 {1}%", "{0}: budget {1}% remaining", "{0}: 예산 {1}% 남음"],
+        ["tray.balanceRemaining"] = ["{0}：余额 {1} {2}", "{0}: balance {1} {2}", "{0}: 잔액 {1} {2}"],
 
         // Header button caption + arrow ({0} = ▾ / ▴)
         ["header.detailsArrow"] = ["详情 {0}", "Details {0}", "세부 {0}"],

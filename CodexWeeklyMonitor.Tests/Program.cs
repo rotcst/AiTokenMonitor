@@ -1900,6 +1900,32 @@ Run("Codex 旧额度在卡片提示和托盘中带陈旧标记", () =>
         Equal(
             "Codex · Plus：周额度剩余 81%",
             MainWindow.FormatTrayStatusLine("Codex", "plus", weekly));
+
+        var fiveHour = new RateLimitWindow(20, DateTimeOffset.Now.AddHours(4), 300);
+        Equal(
+            "Codex · Plus：5H剩余 80% · 周额度剩余 81%",
+            MainWindow.FormatDualTrayStatusLine("Codex · Plus", fiveHour, weekly));
+        Equal(
+            "Codex · Plus：5H约剩余 80% · 周约剩余 81%（旧数据）",
+            MainWindow.FormatDualTrayStatusLine("Codex · Plus", fiveHour, weekly, isStale: true));
+        Equal(
+            "Antigravity · Gemini 4 Argon (High)：周额度剩余 81%",
+            MainWindow.FormatDualTrayStatusLine("Antigravity · Gemini 4 Argon (High)", null, weekly));
+        Equal(
+            "Antigravity · Claude Opus 5.5：5H剩余 80%",
+            MainWindow.FormatDualTrayStatusLine("Antigravity · Claude Opus 5.5", fiveHour, null));
+        Equal(
+            "Antigravity：额度未知",
+            MainWindow.FormatDualTrayStatusLine("Antigravity", null, null));
+
+        Loc.SetLanguage(AppLanguage.English);
+        Equal(
+            "Codex · Plus: 5h 80% · weekly 81%",
+            MainWindow.FormatDualTrayStatusLine("Codex · Plus", fiveHour, weekly));
+        Loc.SetLanguage(AppLanguage.Korean);
+        Equal(
+            "Codex · Plus: 5시간 80% · 주간 81%",
+            MainWindow.FormatDualTrayStatusLine("Codex · Plus", fiveHour, weekly));
     }
     finally
     {
@@ -2321,6 +2347,33 @@ RunSta("窗口交互、托盘隐藏恢复和现代滚动条可用", () =>
             {
                 throw new Exception(
                     $"托盘菜单顺序错误：{string.Join(" > ", trayItems.Select(item => item.Text))}");
+            }
+
+            // 测试动态多模型状态行（如 6+ 个模型状态行）：均位于第一条分隔线之前，原有菜单项顺序不变
+            var multiStatus = new[]
+            {
+                "Codex · Plus：5H剩余 80% · 周额度剩余 40%",
+                "Claude · Pro：5H剩余 100% · 周额度剩余 0%",
+                "Antigravity · Gemini 3.8 Flash (High)：5H剩余 36% · 周额度剩余 60%",
+                "Antigravity · Gemini 4 Argon (High)：周额度剩余 43%",
+                "Antigravity · Claude Opus 5.5：5H剩余 100%",
+                "Antigravity · Claude Sonnet 5.5：5H剩余 100%",
+            };
+            nativeTray.UpdateMenuStatus(multiStatus);
+            var updatedTrayItems = trayMenu.Items.OfType<Forms.ToolStripMenuItem>().ToArray();
+            var expectedMultiOrder = multiStatus.Concat(new[]
+            {
+                "显示主窗口",
+                "立即刷新",
+                "开机自动启动",
+                "语言 / Language",
+                "检查版本更新",
+                "退出程序",
+            }).ToArray();
+            if (!updatedTrayItems.Select(item => item.Text).SequenceEqual(expectedMultiOrder))
+            {
+                throw new Exception(
+                    $"多模型托盘菜单顺序错误：{string.Join(" > ", updatedTrayItems.Select(item => item.Text))}");
             }
 
             var refreshRequested = false;
@@ -4221,6 +4274,134 @@ RunSta("Antigravity：主界面卡片支持鼠标点击切换 5 小时与周额�
     }
 });
 
+RunSta("系统托盘右键菜单显示全部模型的5H额度与周额度", () =>
+{
+    var trayIcon = new FakeTrayIconService();
+    var mainWindow = new MainWindow(trayIcon, enableMonitoring: false);
+    mainWindow.Show();
+    try
+    {
+        Loc.SetLanguage(AppLanguage.Chinese);
+
+        // 1. Codex 快照（5小时与周额度）
+        var codexRateLimits = new AccountRateLimits(
+            FiveHour: new RateLimitWindow(16, DateTimeOffset.Now.AddHours(2), 300),
+            Weekly: new RateLimitWindow(58, DateTimeOffset.Now.AddDays(5), 10_080),
+            Credits: null,
+            AvailableResetCount: 0,
+            PlanType: "Plus",
+            FetchedAt: DateTimeOffset.Now);
+        mainWindow.ApplySnapshot(new CodexUsageSnapshot(
+            RateLimits: codexRateLimits,
+            TokenUsage: null,
+            TokenUsageError: null,
+            FetchedAt: DateTimeOffset.Now,
+            Detail: new CodexAccountDetail(null, "plus", true, false, null, null, Array.Empty<CodexModelLimit>(), null, null, false, "api")));
+
+        // 2. Claude 快照（5小时、周额度与 Fable 点数额度）
+        var claudeAccount = new ClaudeAccountUsage(
+            FiveHour: new RateLimitWindow(24, DateTimeOffset.Now.AddHours(3), 300),
+            Weekly: new RateLimitWindow(41, DateTimeOffset.Now.AddDays(4), 10_080),
+            ScopedLimits:
+            [
+                new ClaudeScopedLimit("seven_day_overage_included", "Fable 5.1", 9, DateTimeOffset.Now.AddDays(4))
+            ],
+            ExtraUsage: null,
+            SubscriptionType: "Pro",
+            FetchedAt: DateTimeOffset.Now);
+        mainWindow.ApplyClaudeSnapshot(new ClaudeUsageSnapshot(
+            Account: claudeAccount,
+            AccountError: null,
+            Status: null,
+            TokenUsage: null,
+            IsClaudeAvailable: true,
+            IsBridgeConfigured: true,
+            FetchedAt: DateTimeOffset.Now));
+
+        // 3. Antigravity 快照（Flash 5H+周额度、Argon 周额度、Opus 5H、Sonnet 5H、GPT-OSS 5H）
+        var flashFiveHour = new RateLimitWindow(16, DateTimeOffset.Now.AddHours(4), 300);
+        var flashWeekly = new RateLimitWindow(40, DateTimeOffset.Now.AddDays(5), 10_080);
+        var argonWeekly = new RateLimitWindow(57, DateTimeOffset.Now.AddDays(6), 10_080);
+        var opusFiveHour = new RateLimitWindow(0, DateTimeOffset.Now.AddHours(4), 300);
+        var sonnetFiveHour = new RateLimitWindow(0, DateTimeOffset.Now.AddHours(4), 300);
+        var gptFiveHour = new RateLimitWindow(0, DateTimeOffset.Now.AddHours(4), 300);
+
+        var agModels = new[]
+        {
+            new AntigravityModelUsage("gemini-3.8-flash", "Gemini 3.8 Flash (High)", 1000, 500, 100, 400, 1000, 1000, 10, 50, DateTimeOffset.Now,
+                QuotaWindow: flashFiveHour, FiveHourQuotaWindow: flashFiveHour, WeeklyQuotaWindow: flashWeekly),
+            new AntigravityModelUsage("gemini-4-argon", "Gemini 4 Argon (High)", 500, 200, 50, 250, 500, 500, 5, 25, DateTimeOffset.Now,
+                QuotaWindow: argonWeekly, FiveHourQuotaWindow: null, WeeklyQuotaWindow: argonWeekly),
+            new AntigravityModelUsage("claude-opus-5.5", "Claude Opus 5.5", 200, 100, 0, 100, 200, 200, 2, 10, DateTimeOffset.Now,
+                QuotaWindow: opusFiveHour, FiveHourQuotaWindow: opusFiveHour, WeeklyQuotaWindow: null),
+            new AntigravityModelUsage("claude-sonnet-5.5", "Claude Sonnet 5.5", 150, 50, 0, 100, 150, 150, 2, 8, DateTimeOffset.Now,
+                QuotaWindow: sonnetFiveHour, FiveHourQuotaWindow: sonnetFiveHour, WeeklyQuotaWindow: null),
+            new AntigravityModelUsage("gpt-oss-120b", "GPT-OSS 120B (Medium)", 100, 50, 0, 50, 100, 100, 1, 7, DateTimeOffset.Now,
+                QuotaWindow: gptFiveHour, FiveHourQuotaWindow: gptFiveHour, WeeklyQuotaWindow: null),
+        };
+
+        mainWindow.ApplyAntigravitySnapshot(new AntigravityUsageSnapshot(
+            Models: agModels,
+            TokenUsage: null,
+            Session: null,
+            Status: new AntigravityStatusUsage(flashFiveHour, flashWeekly, "gemini-3.8-flash", null, null, "Pro", DateTimeOffset.Now),
+            TotalConversations: 5,
+            TotalTurns: 20,
+            IsAntigravityAvailable: true,
+            IsBridgeConfigured: true,
+            FetchedAt: DateTimeOffset.Now));
+
+        mainWindow.UpdateLayout();
+
+        var statusLines = trayIcon.MenuStatusLines;
+        if (statusLines.Count < 7)
+        {
+            throw new Exception($"托盘状态行数量不足：实际只有 {statusLines.Count} 行，内容：{string.Join(" | ", statusLines)}");
+        }
+
+        // 验证 Codex 包含 5H 剩余 84% 与 周额度剩余 42%
+        var codexLine = statusLines.Single(line => line.StartsWith("Codex · Plus", StringComparison.Ordinal));
+        Equal(true, codexLine.Contains("5H剩余 84%"));
+        Equal(true, codexLine.Contains("周额度剩余 42%"));
+
+        // 验证 Claude 包含 5H 剩余 76% 与 周额度剩余 59%
+        var claudeLine = statusLines.Single(line => line.StartsWith("Claude · Pro", StringComparison.Ordinal));
+        Equal(true, claudeLine.Contains("5H剩余 76%"));
+        Equal(true, claudeLine.Contains("周额度剩余 59%"));
+
+        // 验证 Claude Fable 5.1 点数额度剩余 91%
+        var fableLine = statusLines.Single(line => line.Contains("Fable 5.1"));
+        Equal(true, fableLine.Contains("91%"));
+
+        // 验证 Antigravity Gemini 3.8 Flash 包含 5H 剩余 84% 与 周额度剩余 60%
+        var flashLine = statusLines.Single(line => line.Contains("Gemini 3.8 Flash"));
+        Equal(true, flashLine.Contains("5H剩余 84%"));
+        Equal(true, flashLine.Contains("周额度剩余 60%"));
+
+        // 验证 Antigravity Gemini 4 Argon 仅周额度剩余 43%
+        var argonLine = statusLines.Single(line => line.Contains("Gemini 4 Argon"));
+        Equal(false, argonLine.Contains("5H剩余"));
+        Equal(true, argonLine.Contains("周额度剩余 43%"));
+
+        // 验证 Antigravity Claude Opus 5.5 仅 5H 剩余 100%
+        var opusLine = statusLines.Single(line => line.Contains("Claude Opus 5.5"));
+        Equal(true, opusLine.Contains("5H剩余 100%"));
+        Equal(false, opusLine.Contains("周额度剩余"));
+
+        // 验证 Antigravity Claude Sonnet 5.5 仅 5H 剩余 100%
+        var sonnetLine = statusLines.Single(line => line.Contains("Claude Sonnet 5.5"));
+        Equal(true, sonnetLine.Contains("5H剩余 100%"));
+
+        // 验证 Antigravity GPT-OSS 120B 仅 5H 剩余 100%
+        var gptLine = statusLines.Single(line => line.Contains("GPT-OSS 120B"));
+        Equal(true, gptLine.Contains("5H剩余 100%"));
+    }
+    finally
+    {
+        mainWindow.Close();
+    }
+});
+
 Console.WriteLine(failed == 0
     ? "全部测试通过。"
     : $"{failed} 个测试失败。");
@@ -4422,10 +4603,20 @@ sealed class FakeTrayIconService : ITrayIconService
     public bool RequestStartupToggle(bool enabled) =>
         StartupToggleRequested?.Invoke(enabled) ?? enabled;
 
+    public IReadOnlyList<string> MenuStatusLines { get; private set; } = Array.Empty<string>();
+
     public void UpdateMenuStatus(string codexStatus, string claudeStatus)
     {
-        CodexMenuStatus = codexStatus;
-        ClaudeMenuStatus = claudeStatus;
+        UpdateMenuStatus([codexStatus, claudeStatus]);
+    }
+
+    public void UpdateMenuStatus(IReadOnlyList<string> statusLines)
+    {
+        MenuStatusLines = statusLines;
+        CodexMenuStatus = statusLines.FirstOrDefault(line => line.StartsWith("Codex", StringComparison.OrdinalIgnoreCase))
+            ?? (statusLines.Count > 0 ? statusLines[0] : string.Empty);
+        ClaudeMenuStatus = statusLines.FirstOrDefault(line => line.StartsWith("Claude", StringComparison.OrdinalIgnoreCase))
+            ?? (statusLines.Count > 1 ? statusLines[1] : string.Empty);
     }
 
     public void Dispose()

@@ -29,6 +29,15 @@ public sealed record AntigravityModelUsage(
     RateLimitWindow? FiveHourQuotaWindow = null,
     RateLimitWindow? WeeklyQuotaWindow = null)
 {
+    public bool HasQuota =>
+        FiveHourQuotaWindow is not null || WeeklyQuotaWindow is not null || QuotaWindow is not null;
+
+    public RateLimitWindow? FiveHourWindow =>
+        FiveHourQuotaWindow ?? (IsFiveHour(QuotaWindow) ? QuotaWindow : (QuotaWindow is not null && !IsWeekly(QuotaWindow) ? QuotaWindow : null));
+
+    public RateLimitWindow? WeeklyWindow =>
+        WeeklyQuotaWindow ?? (IsWeekly(QuotaWindow) ? QuotaWindow : null);
+
     public RateLimitWindow? GetQuotaWindow(QuotaPeriod period) => period switch
     {
         QuotaPeriod.Weekly => WeeklyQuotaWindow ?? (IsWeekly(QuotaWindow) ? QuotaWindow : null) ?? QuotaWindow,
@@ -42,6 +51,10 @@ public sealed record AntigravityModelUsage(
         QuotaPeriod.FiveHour => FiveHourQuotaWindow is not null || IsFiveHour(QuotaWindow),
         _ => QuotaWindow is not null,
     };
+
+    public static bool IsWeeklyWindow(RateLimitWindow? window) => IsWeekly(window);
+
+    public static bool IsFiveHourWindow(RateLimitWindow? window) => IsFiveHour(window);
 
     private static bool IsWeekly(RateLimitWindow? window) =>
         window?.DurationMinutes >= 1440 ||
