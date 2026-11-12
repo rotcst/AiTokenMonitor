@@ -4057,6 +4057,22 @@ RunSta("Antigravity：主界面卡片支持鼠标点击切换 5 小时与周额�
         FiveHourQuotaWindow: null,
         WeeklyQuotaWindow: new RateLimitWindow(100, now.AddDays(5), 10_080));
 
+    var opus = new AntigravityModelUsage(
+        ModelName: "claude-opus-5.5",
+        DisplayName: "Claude Opus 5.5",
+        TotalTokens: 0,
+        InputTokens: 0,
+        CacheReadTokens: 0,
+        OutputTokens: 0,
+        TodayTokens: 0,
+        SevenDayTokens: 0,
+        TurnCount: 0,
+        SharePercent: 0,
+        LastUsedAt: now,
+        QuotaWindow: new RateLimitWindow(0, now.AddHours(3), 300),
+        FiveHourQuotaWindow: new RateLimitWindow(0, now.AddHours(3), 300),
+        WeeklyQuotaWindow: new RateLimitWindow(40, now.AddDays(6), 10_080));
+
     var status = new AntigravityStatusUsage(
         FiveHour: flash.FiveHourQuotaWindow,
         Weekly: flash.WeeklyQuotaWindow,
@@ -4067,11 +4083,12 @@ RunSta("Antigravity：主界面卡片支持鼠标点击切换 5 小时与周额�
         ObservedAt: now,
         ModelQuotas: [
             new AntigravityModelQuota("m:flash", "gemini-3.8-flash", "Gemini 3.8 Flash (High)", 16, now.AddHours(4), null, flash.FiveHourQuotaWindow, flash.WeeklyQuotaWindow),
-            new AntigravityModelQuota("m:argon", "gemini-4-argon", "Gemini 4 Argon (High)", 100, now.AddDays(5), null, null, argon.WeeklyQuotaWindow)
+            new AntigravityModelQuota("m:argon", "gemini-4-argon", "Gemini 4 Argon (High)", 100, now.AddDays(5), null, null, argon.WeeklyQuotaWindow),
+            new AntigravityModelQuota("m:opus", "claude-opus-5.5", "Claude Opus 5.5", 0, now.AddHours(3), null, opus.FiveHourQuotaWindow, opus.WeeklyQuotaWindow)
         ]);
 
     var snapshot = new AntigravityUsageSnapshot(
-        Models: [flash, argon],
+        Models: [flash, argon, opus],
         TokenUsage: new AccountTokenUsage(2000, 1000, 0, 1, 1, [new DailyTokenUsage(DateOnly.FromDateTime(DateTime.Today), 2000)], now),
         Session: new AntigravitySessionState("conv-1", "Gemini 3.8 Flash (High)", 190_000, 1000, 10, now),
         Status: status,
@@ -4131,6 +4148,48 @@ RunSta("Antigravity：主界面卡片支持鼠标点击切换 5 小时与周额�
         Equal(true, card1Used.Text.Contains("已用 27%"));
         Equal(true, card1Used.Text.Contains("周") || card1Used.Text.Contains("周额度"));
 
+        // 只切换被点击的卡片：Opus 卡片仍保持 5 小时（剩余 100%），Argon 仍是周额度 0%
+        (TextBlock Caption, TextBlock Remaining, Border Card) FindCard(string name)
+        {
+            foreach (var prefix in new[] { "FiveHour", "Weekly", "Luna" })
+            {
+                var caption = (TextBlock)mainWindow.FindName($"{prefix}Caption");
+                if (caption.Text.Contains(name))
+                {
+                    return (caption, (TextBlock)mainWindow.FindName($"{prefix}RemainingText"), (Border)mainWindow.FindName($"{prefix}QuotaCard"));
+                }
+            }
+
+            throw new Exception($"未找到卡片 {name}");
+        }
+
+        var opusCard = FindCard("Opus");
+        var argonCard = FindCard("Argon");
+        Equal("100%", opusCard.Remaining.Text);
+        Equal("0%", argonCard.Remaining.Text);
+
+        // 仅有周额度的 Argon 不可切换：普通光标、无提示，且点击不影响任何卡片
+        Equal<System.Windows.Input.Cursor?>(null, argonCard.Card.Cursor);
+        Equal<object?>(null, argonCard.Card.ToolTip);
+        argonCard.Card.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+        {
+            RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent,
+            Source = argonCard.Card
+        });
+        mainWindow.UpdateLayout();
+        Equal("73%", card1Remaining.Text);
+        Equal("100%", opusCard.Remaining.Text);
+
+        // 单独点击 Opus：Opus 切到周额度（剩余 60%），Flash 保持周额度 73% 不被连带
+        opusCard.Card.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+        {
+            RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent,
+            Source = opusCard.Card
+        });
+        mainWindow.UpdateLayout();
+        Equal("60%", FindCard("Opus").Remaining.Text);
+        Equal("73%", card1Remaining.Text);
+
         // 再次在卡片上按下并释放，切回 5小时 模式
         rootBorder.RaiseEvent(mouseDownArgs);
         var mouseUpArgs2 = new System.Windows.Input.MouseButtonEventArgs(
@@ -4147,6 +4206,14 @@ RunSta("Antigravity：主界面卡片支持鼠标点击切换 5 小时与周额�
         Equal("84%", card1Remaining.Text);
         Equal(true, card1Used.Text.Contains("已用 16%"));
         Equal(true, card1Used.Text.Contains("5h") || card1Used.Text.Contains("5小时"));
+        Equal("60%", FindCard("Opus").Remaining.Text);
+
+        // 切到 Codex 标签后，固定卡片不再是可点击状态（恢复普通光标，可用于拖动窗口）
+        var codexTab = (RadioButton)mainWindow.FindName("CodexProviderTab");
+        codexTab.IsChecked = true;
+        mainWindow.UpdateLayout();
+        Equal<System.Windows.Input.Cursor?>(null, card1.Cursor);
+        Equal<object?>(null, card1.ToolTip);
     }
     finally
     {

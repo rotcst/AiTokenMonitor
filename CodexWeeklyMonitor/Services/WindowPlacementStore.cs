@@ -61,4 +61,5 @@ public sealed record WindowPlacement(
     string RightGaugeProvider = "Claude",
     double? CustomWidth = null,
     double? CustomHeight = null,
-    string? AntigravityQuotaPeriod = null);
+    string? AntigravityQuotaPeriod = null,
+    Dictionary<string, string>? QuotaCardPeriods = null);

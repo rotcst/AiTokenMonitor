@@ -391,10 +391,7 @@
                             BorderBrush="{StaticResource CardBorderBrush}"
                             BorderThickness="1"
                             CornerRadius="10"
-                            Cursor="Hand"
-                            Tag="QuotaCard"
                             PreviewMouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
-                            MouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
                             MouseEnter="QuotaCard_MouseEnter"
                             MouseLeave="QuotaCard_MouseLeave">
                         <Grid>
@@ -462,10 +459,7 @@
                             BorderBrush="{StaticResource CardBorderBrush}"
                             BorderThickness="1"
                             CornerRadius="10"
-                            Cursor="Hand"
-                            Tag="QuotaCard"
                             PreviewMouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
-                            MouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
                             MouseEnter="QuotaCard_MouseEnter"
                             MouseLeave="QuotaCard_MouseLeave">
                         <Grid>
@@ -533,10 +527,7 @@
                             BorderBrush="{StaticResource CardBorderBrush}"
                             BorderThickness="1"
                             CornerRadius="10"
-                            Cursor="Hand"
-                            Tag="QuotaCard"
                             PreviewMouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
-                            MouseLeftButtonUp="QuotaCard_MouseLeftButtonUp"
                             MouseEnter="QuotaCard_MouseEnter"
                             MouseLeave="QuotaCard_MouseLeave">
                         <Grid>
