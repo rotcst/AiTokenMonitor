@@ -3873,6 +3873,44 @@ Run("ExternalProviderMonitor 解析 DeepSeek / Kimi / SiliconFlow / Grok 官方�
     Equal(ExternalProviderId.SiliconFlow, ExternalProviderMonitor.MatchProviderByModel("Pro/deepseek-ai/DeepSeek-V3"));
 });
 
+Run("第三方会话缓存处理跨缓冲区、追加和删除，且不重复计数", () =>
+{
+    var root = Path.Combine(Path.GetTempPath(), $"AiTokenMonitor-External-{Guid.NewGuid():N}");
+    var projects = Path.Combine(root, "projects");
+    Directory.CreateDirectory(projects);
+    try
+    {
+        var path = Path.Combine(projects, "session.jsonl");
+        var firstTurn = JsonSerializer.Serialize(new
+        {
+            uuid = "first",
+            message = new { model = "deepseek-chat", usage = new { input_tokens = 70, output_tokens = 10 } },
+            content = new string('a', 140 * 1024),
+        });
+        File.WriteAllText(path, firstTurn + "\r\n\r\n", new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        using var monitor = new ExternalProviderMonitor(root, root, Path.Combine(root, "kimi"), enableNetworkPolling: false);
+
+        void RefreshAndCheck(long? expected)
+        {
+            monitor.RefreshAllAsync().GetAwaiter().GetResult();
+            Equal(expected, monitor.GetSnapshot(ExternalProviderId.DeepSeek)!.TokenUsage?.LifetimeTokens);
+        }
+
+        RefreshAndCheck(80);
+        RefreshAndCheck(80);
+        File.AppendAllText(path, """{"uuid":"second","model":"deepseek-chat","usage":{"input_tokens":10,"output_tokens":15}}""");
+        RefreshAndCheck(105);
+        File.WriteAllText(path, """{"uuid":"third","model":"deepseek-chat","usage":{"input_tokens":7}}""");
+        RefreshAndCheck(7);
+        File.Delete(path);
+        RefreshAndCheck(null);
+    }
+    finally
+    {
+        Directory.Delete(root, recursive: true);
+    }
+});
+
 RunSta("MainWindow 支持切换 Grok / DeepSeek / Kimi / Qwen / GLM / SiliconFlow 多厂商标签与多行卡片", () =>
 {
     var mainWindow = new MainWindow(null, enableMonitoring: false);
@@ -4001,7 +4039,8 @@ RunSta("MainWindow 支持切换 Grok / DeepSeek / Kimi / Qwen / GLM / SiliconFlo
 
 Run("Antigravity：解析 RetrieveUserQuotaSummary 完整分桶与模型关联（5小时与周额度）", () =>
 {
-    var now = DateTimeOffset.Now;
+    // The fixture contains fixed reset dates and the parser classifies fallback windows relative to now.
+    var now = new DateTimeOffset(2026, 11, 12, 1, 0, 0, TimeSpan.Zero);
     using var statusDoc = JsonDocument.Parse("""
         {"userStatus":{"planStatus":{"planInfo":{"planName":"Pro"}},
           "cascadeModelConfigData":{"clientModelConfigs":[

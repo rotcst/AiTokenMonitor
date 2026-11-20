@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.IO;
 using System.Net.Http;
@@ -115,7 +116,9 @@ public sealed class ExternalProviderMonitor : IDisposable
     private readonly bool _enableNetworkPolling;
     private readonly object _gate = new();
     private readonly Dictionary<ExternalProviderId, ExternalProviderSnapshot> _snapshots = new();
-    private bool _disposed;
+    private readonly Dictionary<(string Path, ExternalProviderId? DefaultProvider), ScannedSession> _sessionCache = new();
+    private int _refreshing;
+    private volatile bool _disposed;
 
     public ExternalProviderMonitor(
         string? bridgeDirectory = null,
@@ -163,12 +166,33 @@ public sealed class ExternalProviderMonitor : IDisposable
 
     public async Task RefreshAllAsync(CancellationToken cancellationToken = default)
     {
-        if (_disposed)
+        if (_disposed || Interlocked.CompareExchange(ref _refreshing, 1, 0) != 0)
         {
             return;
         }
 
-        var localRecordsByProvider = ScanLocalTranscripts();
+        try
+        {
+            await Task.Run(() => RefreshCoreAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The owner is closing or cancelled the refresh.
+        }
+        finally
+        {
+            if (_disposed)
+            {
+                _sessionCache.Clear();
+            }
+
+            Volatile.Write(ref _refreshing, 0);
+        }
+    }
+
+    private async Task RefreshCoreAsync(CancellationToken cancellationToken)
+    {
+        var localRecordsByProvider = ScanLocalTranscripts(cancellationToken);
         var configMap = LoadProvidersConfig(_bridgeDirectory);
 
         foreach (var spec in AllSpecs)
@@ -188,6 +212,11 @@ public sealed class ExternalProviderMonitor : IDisposable
                     localData,
                     configMap.GetValueOrDefault(spec.Key),
                     cancellationToken);
+                if (_disposed || cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
                 lock (_gate)
                 {
                     _snapshots[spec.Id] = snapshot;
@@ -585,24 +614,25 @@ public sealed class ExternalProviderMonitor : IDisposable
     }
 
     private Dictionary<ExternalProviderId, (IReadOnlyList<AntigravityTokenRecord> Records, AntigravitySessionState? Session)>
-        ScanLocalTranscripts()
+        ScanLocalTranscripts(CancellationToken cancellationToken)
     {
         var recordsByProvider = AllSpecs.ToDictionary(
             spec => spec.Id,
             _ => new List<AntigravityTokenRecord>());
         var latestSessionByProvider = new Dictionary<ExternalProviderId, AntigravitySessionState>();
+        var seen = new HashSet<(string Path, ExternalProviderId? DefaultProvider)>();
 
         // 1. Scan Claude Code projects directory for third-party model sessions (DeepSeek, Kimi, GLM, Qwen, Grok, SiliconFlow).
         var claudeProjects = Path.Combine(_claudeHome, "projects");
         if (Directory.Exists(claudeProjects))
         {
-            ScanJsonlDirectory(claudeProjects, recordsByProvider, latestSessionByProvider);
+            ScanJsonlDirectory(claudeProjects, recordsByProvider, latestSessionByProvider, seen, cancellationToken);
         }
 
         // 2. Scan Kimi CLI directory (~/.kimi) if present.
         if (Directory.Exists(_kimiHome))
         {
-            ScanJsonlDirectory(_kimiHome, recordsByProvider, latestSessionByProvider, ExternalProviderId.Kimi);
+            ScanJsonlDirectory(_kimiHome, recordsByProvider, latestSessionByProvider, seen, cancellationToken, ExternalProviderId.Kimi);
         }
 
         // 3. Scan %LOCALAPPDATA%\AiTokenMonitor\sessions\<provider> if present.
@@ -614,9 +644,14 @@ public sealed class ExternalProviderMonitor : IDisposable
                 var providerDir = Path.Combine(customSessionsRoot, spec.Key);
                 if (Directory.Exists(providerDir))
                 {
-                    ScanJsonlDirectory(providerDir, recordsByProvider, latestSessionByProvider, spec.Id);
+                    ScanJsonlDirectory(providerDir, recordsByProvider, latestSessionByProvider, seen, cancellationToken, spec.Id);
                 }
             }
+        }
+
+        foreach (var key in _sessionCache.Keys.Where(key => !seen.Contains(key)).ToArray())
+        {
+            _sessionCache.Remove(key);
         }
 
         var result = new Dictionary<ExternalProviderId, (IReadOnlyList<AntigravityTokenRecord>, AntigravitySessionState?)>();
@@ -629,23 +664,64 @@ public sealed class ExternalProviderMonitor : IDisposable
         return result;
     }
 
-    private static void ScanJsonlDirectory(
+    private void ScanJsonlDirectory(
         string directory,
         Dictionary<ExternalProviderId, List<AntigravityTokenRecord>> recordsByProvider,
         Dictionary<ExternalProviderId, AntigravitySessionState> latestSessionByProvider,
+        HashSet<(string Path, ExternalProviderId? DefaultProvider)> seen,
+        CancellationToken cancellationToken,
         ExternalProviderId? defaultProvider = null)
     {
         try
         {
             foreach (var file in Directory.EnumerateFiles(directory, "*.jsonl", SearchOption.AllDirectories))
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (_disposed)
+                {
+                    return;
+                }
+
+                var key = (file, defaultProvider);
+                if (!seen.Add(key))
+                {
+                    continue;
+                }
+
+                _sessionCache.TryGetValue(key, out var session);
                 try
                 {
-                    ParseThirdPartySessionFile(file, recordsByProvider, latestSessionByProvider, defaultProvider);
+                    var info = new FileInfo(file);
+                    var length = info.Length;
+                    var modified = info.LastWriteTimeUtc;
+                    if (session is null || session.Length != length || session.LastWriteTimeUtc != modified)
+                    {
+                        var records = new Dictionary<ExternalProviderId, List<AntigravityTokenRecord>>();
+                        var latest = new Dictionary<ExternalProviderId, AntigravitySessionState>();
+                        ParseThirdPartySessionFile(file, records, latest, defaultProvider, cancellationToken);
+                        session = new ScannedSession(length, modified, records, latest);
+                        _sessionCache[key] = session;
+                    }
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {
-                    // Skip locked files.
+                    // Keep the previous successful count while an active file is temporarily locked.
+                }
+
+                if (session is null)
+                {
+                    continue;
+                }
+
+                foreach (var (provider, records) in session.Records)
+                {
+                    recordsByProvider[provider].AddRange(records);
+                    var latest = session.Latest[provider];
+                    if (!latestSessionByProvider.TryGetValue(provider, out var prior) ||
+                        latest.ObservedAt >= prior.ObservedAt)
+                    {
+                        latestSessionByProvider[provider] = latest with { TurnCount = recordsByProvider[provider].Count };
+                    }
                 }
             }
         }
@@ -659,7 +735,8 @@ public sealed class ExternalProviderMonitor : IDisposable
         string filePath,
         Dictionary<ExternalProviderId, List<AntigravityTokenRecord>> recordsByProvider,
         Dictionary<ExternalProviderId, AntigravitySessionState> latestSessionByProvider,
-        ExternalProviderId? defaultProvider = null)
+        ExternalProviderId? defaultProvider = null,
+        CancellationToken cancellationToken = default)
     {
         var fallbackTime = File.Exists(filePath)
             ? new DateTimeOffset(File.GetLastWriteTimeUtc(filePath), TimeSpan.Zero)
@@ -669,41 +746,88 @@ public sealed class ExternalProviderMonitor : IDisposable
             FileMode.Open,
             FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete);
-        using var reader = new StreamReader(stream);
+        var chunk = ArrayPool<byte>.Shared.Rent(64 * 1024);
+        var line = new ArrayBufferWriter<byte>(4 * 1024);
         var lineIndex = 0;
-        while (reader.ReadLine() is { } line)
+        try
+        {
+            int read;
+            while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var remaining = chunk.AsSpan(0, read);
+                while (!remaining.IsEmpty)
+                {
+                    var newline = remaining.IndexOf((byte)'\n');
+                    if (newline < 0)
+                    {
+                        line.Write(remaining);
+                        break;
+                    }
+
+                    if (line.WrittenCount == 0)
+                    {
+                        ParseLine(chunk.AsMemory(read - remaining.Length, newline));
+                    }
+                    else
+                    {
+                        line.Write(remaining[..newline]);
+                        ParseLine(line.WrittenMemory);
+                        line.ResetWrittenCount();
+                    }
+
+                    remaining = remaining[(newline + 1)..];
+                }
+            }
+
+            if (line.WrittenCount > 0)
+            {
+                ParseLine(line.WrittenMemory);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(chunk);
+        }
+
+        void ParseLine(ReadOnlyMemory<byte> record)
         {
             lineIndex++;
-            if (string.IsNullOrWhiteSpace(line))
+            if (lineIndex == 1 && record.Span.StartsWith("\uFEFF"u8))
             {
-                continue;
+                record = record[3..];
+            }
+
+            if (record.IsEmpty || (record.Length == 1 && record.Span[0] == (byte)'\r'))
+            {
+                return;
             }
 
             try
             {
-                using var doc = JsonDocument.Parse(line);
+                using var doc = JsonDocument.Parse(record);
                 var root = doc.RootElement;
                 if (root.ValueKind != JsonValueKind.Object)
                 {
-                    continue;
+                    return;
                 }
 
                 var model = TryExtractModelName(root);
                 var providerId = MatchProviderByModel(model) ?? defaultProvider;
                 if (providerId is null)
                 {
-                    continue;
+                    return;
                 }
 
                 if (!TryExtractTokenUsage(root, out var input, out var cacheRead, out var output))
                 {
-                    continue;
+                    return;
                 }
 
                 var total = input + cacheRead + output;
                 if (total <= 0)
                 {
-                    continue;
+                    return;
                 }
 
                 var timestamp = TryExtractTimestamp(root) ?? fallbackTime;
@@ -714,7 +838,13 @@ public sealed class ExternalProviderMonitor : IDisposable
                                $"{filePath}:{lineIndex}";
                 var normalizedModel = NormalizeProviderModelName(providerId.Value, model);
 
-                recordsByProvider[providerId.Value].Add(new AntigravityTokenRecord(
+                if (!recordsByProvider.TryGetValue(providerId.Value, out var providerRecords))
+                {
+                    providerRecords = [];
+                    recordsByProvider[providerId.Value] = providerRecords;
+                }
+
+                providerRecords.Add(new AntigravityTokenRecord(
                     Key: $"{filePath}#{recordId}",
                     ConversationId: Path.GetFileNameWithoutExtension(filePath),
                     ModelName: normalizedModel,
@@ -734,7 +864,7 @@ public sealed class ExternalProviderMonitor : IDisposable
                         ModelName: normalizedModel,
                         ContextTokens: contextTokens,
                         OutputTokens: output,
-                        TurnCount: recordsByProvider[providerId.Value].Count,
+                        TurnCount: providerRecords.Count,
                         ObservedAt: timestamp);
                 }
             }
@@ -1085,6 +1215,12 @@ public sealed class ExternalProviderMonitor : IDisposable
             _httpClient.Dispose();
         }
     }
+
+    private sealed record ScannedSession(
+        long Length,
+        DateTime LastWriteTimeUtc,
+        Dictionary<ExternalProviderId, List<AntigravityTokenRecord>> Records,
+        Dictionary<ExternalProviderId, AntigravitySessionState> Latest);
 
     private sealed record ProviderConfigEntry(
         string? ApiKey,
